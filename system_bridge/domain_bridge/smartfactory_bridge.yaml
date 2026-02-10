@@ -1,0 +1,9 @@
+# smartfactory_bridge
+
+name: smartfactory_bridge
+from_domain: 30
+to_domain: 31
+
+topics:
+  /pick_and_place/start:
+    type: std_msgs/msg/Bool
