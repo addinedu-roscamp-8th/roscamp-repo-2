@@ -7,3 +7,33 @@ to_domain: 31
 topics:
   /pick_and_place/start:
     type: std_msgs/msg/Bool
+
+  /arrived_point:
+    type: std_msgs/msg/Int32
+  
+  /battery/present:
+    type: std_msgs/msg/Float32
+    remap: /pinky1/battery/present
+   
+  /amcl_pose:
+    type: geometry_msgs/msg/PoseWithCovarianceStamped
+    remap: /pinky1/amcl_pose
+    
+  /pick_and_place/done:
+    type: std_msgs/msg/Bool
+    reversed: true
+    
+  /pinky1/load_done:
+    type: std_msgs/msg/Bool
+    reversed: true
+    remap: /load_done
+
+  /pinky1/unload_done:
+    type: std_msgs/msg/Bool
+    reversed: true
+    remap: /unload_done
+    
+  /pinky1/move_role:
+    type: std_msgs/msg/String
+    reversed: true
+    remap: /move_role
