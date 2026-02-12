@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>smartfactory_interfaces</name>
+  <version>0.0.0</version>
+  <description> ros2 robot_interface interface currently : srv(1)
+  </description>
+
+  <maintainer email="cgh0396@gmail.com">choigh</maintainer>
+  <license>Apache-2.0</license>
+
+  <!-- Build dependencies -->
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>rosidl_default_generators</buildtool_depend>
+  
+  <!-- Runtime dependencies -->
+  <exec_depend>builtin_interfaces</exec_depend>
+  <exec_depend>rosidl_default_runtime</exec_depend>
+   
+  <!-- Group declaration for interface packages -->
+  <member_of_group>rosidl_interface_packages</member_of_group>
+  
+  <!-- Dependencies -->
+  <depend>geometry_msgs</depend>
+
+  <!-- Testing dependencies -->
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
