@@ -304,6 +304,7 @@ class WarehouseCard(QFrame):
 class CollapsibleBox(QWidget):
     def __init__(self, title="", parent=None):
         super().__init__(parent)
+        self.base_title = title
         self.toggle_button = QPushButton(f"▼ {title}")
         self.toggle_button.setCheckable(True)
         self.toggle_button.setStyleSheet("text-align: left; padding: 8px; font-weight: bold; background-color: #E0E0E0;")
@@ -312,11 +313,16 @@ class CollapsibleBox(QWidget):
         self.content_area.setVisible(False)
         layout = QVBoxLayout(self); layout.setContentsMargins(0,0,0,0)
         layout.addWidget(self.toggle_button); layout.addWidget(self.content_area)
+
     def on_toggled(self, checked):
         self.toggle_button.setText(f"{'▲' if checked else '▼'} {self.toggle_button.text()[2:]}")
         self.content_area.setVisible(checked)
     def add_widget(self, widget): self.content_layout.addWidget(widget)
 
+    def set_selected(self, text):
+        self.base_title = f"{text}"
+        arrow = "▲" if self.toggle_button.isChecked() else "▼"
+        self.toggle_button.setText(f"{arrow} {self.base_title}")
 # ==========================================
 # [메인 시스템]
 class RobotControlSystem(QWidget):
@@ -330,9 +336,18 @@ class RobotControlSystem(QWidget):
             "pinky1": "pinky_c0bd",
             "pinky2": "pinky_b44f",
             "pinky3": "pinky_1542",
-            "jetcobot1": "jetcobot_aac0",
-            "jetcobot2": "jetcobot_aa36"
+            "jetcobot1": "storage_jetcobot",
+            "jetcobot2": "assembly_jetcobot",
+            "jetcobot3": "Openmanipulator",
         }
+        # assembly 전용 토글 사용 변수
+        self.selected_module = None
+        self.module_map = {
+            "모듈1": "MODULE_A",
+            "모듈2": "MODULE_B",
+            "모듈3": "MODULE_C"
+        }
+
 
         self.initUI()
 
@@ -371,7 +386,20 @@ class RobotControlSystem(QWidget):
         bot_layout = QHBoxLayout()
         self.control_group = QGroupBox("로봇 제어")
         ctl_layout = QVBoxLayout()
-        
+
+        # 🔷 전체 Pinky 모니터 버튼
+        ##########################################
+        self.main_control_btn = QPushButton("Main Control")
+        self.main_control_btn.setMinimumHeight(40)
+        self.main_control_btn.setStyleSheet(
+            "background-color: #3F51B5; color: white; font-weight: bold;"
+        )
+        # self.btn_pinky_monitor.clicked.connect(self.show_pinky_monitor)
+        # ctl_layout.addWidget(self.btn_pinky_monitor)
+        self.main_control_btn.clicked.connect(lambda: self.select_robot("main_control"))
+        ctl_layout.addWidget(self.main_control_btn)
+        ##########################################
+
         pinky_box = CollapsibleBox("Pinky 선택")
         for internal_id, display_name in self.robot_name_map.items():
             if "pinky" in internal_id: 
@@ -426,9 +454,101 @@ class RobotControlSystem(QWidget):
         self.info_label = QLabel("왼쪽 메뉴에서 로봇을 선택해주세요.")
         self.info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.info_label)
-        self.detail_panel = QFrame(); self.detail_panel.setStyleSheet("background-color: #F9F9F9; border-radius: 8px; border: 1px solid #DDD;")
-        grid = QGridLayout(self.detail_panel); grid.setSpacing(10); grid.setContentsMargins(20, 20, 20, 20)
-        font_title = QFont("Arial", 12, QFont.Weight.Bold); font_val = QFont("Arial", 16, QFont.Weight.Bold)
+        
+        ################################################3
+        # 🔷 Main Control 패널
+        self.pinky_all_panel = QFrame()
+        self.pinky_all_panel.setStyleSheet(
+            "background-color: #F0F8FF; border-radius: 8px; border: 1px solid #90CAF9;")
+        
+        main_layout_pinky = QVBoxLayout(self.pinky_all_panel)
+
+        # 🔷 맨 위 타이틀
+        self.lbl_pinky_info = QLabel("Pinky 통합 상태 영역")
+        self.lbl_pinky_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_pinky_info.setStyleSheet("font-size:16px; font-weight:bold;")
+        main_layout_pinky.addWidget(self.lbl_pinky_info)
+
+        layout_pinky = QHBoxLayout()
+
+        # 🔷 상단 로봇 상태 표시 바
+        self.robot_status_layout = QGridLayout()
+        self.pinky_status_labels = {}  # id별 QLabel 저장
+        robots = list(self.robot_name_map.items())
+        for index, (rid, display_name) in enumerate(robots):
+            row = index // 3   # 3열 기준
+            col = index % 3
+
+            lbl = QLabel(f"{display_name} : 대기")
+            lbl.setStyleSheet(
+                "font-weight: bold; padding: 5px; border: 1px solid #CCC;"
+            )
+            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+            self.robot_status_layout.addWidget(lbl, row, col)
+            self.pinky_status_labels[rid] = lbl
+
+        main_layout_pinky.addLayout(self.robot_status_layout)
+        ####왼쪽 버튼######################################
+        left_btn_layout = QVBoxLayout()
+        self.pinky_all_btn1 = QPushButton("작업 시작")
+        self.pinky_all_btn1.clicked.connect(self.on_load_complete) ## 연결필요!!!
+
+        self.pinky_all_btn2 = QPushButton("작업종료")
+        self.pinky_all_btn2.clicked.connect(self.on_load_complete) ## 연결필요!!!
+
+        self.pinky_all_btn3 = QPushButton("test_ bnt")
+        self.pinky_all_btn3.clicked.connect(self.on_load_complete) ## 연결필요!!!
+
+        for btn in [self.pinky_all_btn1, self.pinky_all_btn2, self.pinky_all_btn3]:
+            btn.setStyleSheet("background-color: #2196F3; color: white; font-weight: bold; padding: 10px;")
+            btn.setMinimumHeight(50)
+            btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            left_btn_layout.addWidget(btn)
+
+        left_btn_layout.addStretch()
+
+        ####오른쪽버튼##################################
+        self.pinky_content_area = QFrame()
+        self.pinky_content_area.setStyleSheet("background-color: white;")
+        right_layout = QVBoxLayout(self.pinky_content_area)
+
+        self.right_btn1 = QPushButton("우측 버튼1")
+        self.right_btn1.clicked.connect(self.on_load_complete) ## 연결필요!!!
+        self.right_btn2 = QPushButton("우측 버튼2")
+        self.right_btn2.clicked.connect(self.on_load_complete) ## 연결필요!!!
+        self.right_btn3 = QPushButton("우측 버튼3")
+        self.right_btn3.clicked.connect(self.on_load_complete) ## 연결필요!!!
+        self.right_btn4 = QPushButton("우측 버튼4")
+        self.right_btn4.clicked.connect(self.on_load_complete) ## 연결필요!!!
+
+        for btn in [self.right_btn1, self.right_btn2, self.right_btn3, self.right_btn4]:
+            btn.setStyleSheet("background-color: #2196F3; color: white; font-weight: bold; padding: 10px;")
+            btn.setMinimumHeight(50)
+            btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+        right_layout.addWidget(self.right_btn1)
+        right_layout.addWidget(self.right_btn2)
+        bottom_row_layout = QHBoxLayout()
+        bottom_row_layout.addWidget(self.right_btn3)
+        bottom_row_layout.addWidget(self.right_btn4)
+
+        right_layout.addLayout(bottom_row_layout)
+        layout_pinky.addLayout(left_btn_layout, 2)   # 왼쪽 비율
+        layout_pinky.addWidget(self.pinky_content_area, 8)  # 오른쪽 비율
+        
+        main_layout_pinky.addLayout(layout_pinky)
+        layout.addWidget(self.pinky_all_panel)
+        self.pinky_all_panel.hide()
+
+        ######pinky 선택 패널##################################
+        self.pinky_shared_panel = QFrame()
+        self.pinky_shared_panel.setStyleSheet("background-color: #F9F9F9; border-radius: 8px; border: 1px solid #DDD;")
+        grid = QGridLayout(self.pinky_shared_panel)
+        grid.setSpacing(10)
+        grid.setContentsMargins(20, 20, 20, 20)
+        font_title = QFont("Arial", 12, QFont.Weight.Bold)
+        font_val = QFont("Arial", 16, QFont.Weight.Bold)
         t1=QLabel("이름:"); t1.setFont(font_title); self.lbl_name = QLabel("-"); self.lbl_name.setFont(font_val); self.lbl_name.setStyleSheet("color: #3F51B5;")
         t2=QLabel("배터리:"); t2.setFont(font_title); self.lbl_bat = QLabel("-"); self.lbl_bat.setFont(font_val)
         t3=QLabel("모드:"); t3.setFont(font_title); self.lbl_state = QLabel("-"); self.lbl_state.setFont(font_val)
@@ -440,9 +560,8 @@ class RobotControlSystem(QWidget):
         btn_layout = QHBoxLayout()
         self.btn_load_complete = QPushButton("상차 완료"); self.btn_load_complete.setStyleSheet("background-color: #2196F3; color: white; font-weight: bold; padding: 10px;")
         self.btn_load_complete.setMinimumHeight(50)
-        self.btn_load_complete.clicked.connect(self.trigger_manip_start)
+        self.btn_load_complete.clicked.connect(self.on_load_complete) 
 
-        # self.btn_load_complete.clicked.connect(self.on_load_complete)
         self.btn_unload_complete = QPushButton("하차 완료"); self.btn_unload_complete.setStyleSheet("background-color: #4CAF50; color: white; font-weight: bold; padding: 10px;")
         self.btn_unload_complete.setMinimumHeight(50)
         self.btn_unload_complete.clicked.connect(self.on_unload_complete)
@@ -492,17 +611,18 @@ class RobotControlSystem(QWidget):
             return btn
 
         btn_inspect = style_nav_btn(QPushButton("검수대"))
-        btn_parts = style_nav_btn(QPushButton("부품 창고"))
         btn_assembly = style_nav_btn(QPushButton("조립대"))
+        btn_parts = style_nav_btn(QPushButton("모듈 창고"))
+        
 
         # 버튼 클릭 시 색상 변경 및 상태 메시지 업데이트
         btn_inspect.clicked.connect(lambda _, b=btn_inspect: self.send_nav_cmd("INSPECTION_ZONE", b))
-        btn_parts.clicked.connect(lambda _, b=btn_parts: self.send_nav_cmd("PARTS_WAREHOUSE", b))
         btn_assembly.clicked.connect(lambda _, b=btn_assembly: self.send_nav_cmd("ASSEMBLY_ZONE", b))
+        btn_parts.clicked.connect(lambda _, b=btn_parts: self.send_nav_cmd("PARTS_WAREHOUSE", b))
 
         vbox_nav.addWidget(btn_inspect)
-        vbox_nav.addWidget(btn_parts)
         vbox_nav.addWidget(btn_assembly)
+        vbox_nav.addWidget(btn_parts)
         self.grp_nav.setLayout(vbox_nav)
 
         control_nav_layout.addWidget(self.grp_manual, 1)
@@ -510,7 +630,133 @@ class RobotControlSystem(QWidget):
 
         grid.addLayout(control_nav_layout, 5, 0, 1, 2)
 
-        layout.addWidget(self.detail_panel); self.detail_panel.hide(); layout.addStretch(1); self.tab_status.setLayout(layout)
+        ################################################
+        # 🔷 manipulator 전체 전용 패널
+        self.jetcobot_shared_panel = QFrame()
+        self.jetcobot_shared_panel.setStyleSheet(
+            "background-color: #FFF3E0; border-radius: 8px; border: 1px solid #FFB74D;"
+        )
+
+        # 🔹 전체를 세로로 구성
+        main_jet_layout = QVBoxLayout(self.jetcobot_shared_panel)
+
+        # ===============================
+        # 🔹 1️⃣ 상단 상태 표시 영역
+        status_layout = QHBoxLayout()
+
+        # ===== 왼쪽 그룹 (상태 / 모드)
+        left_status_layout = QHBoxLayout()
+        # 🔹 오른쪽 추가 영역 컨테이너
+        self.jetco_extra_container = QWidget()
+        self.jetco_extra_layout = QHBoxLayout(self.jetco_extra_container)
+        self.jetco_extra_layout.setContentsMargins(0,0,0,0)
+
+        status_layout.addWidget(self.jetco_extra_container)
+
+        font_title = QFont("Arial", 12, QFont.Weight.Bold)
+        font_val = QFont("Arial", 14, QFont.Weight.Bold)
+
+        t1 = QLabel("상태 :")
+        t1.setFont(font_title)
+        self.lbl_jetco_status = QLabel("-")
+        self.lbl_jetco_status.setFont(font_val)
+        self.lbl_jetco_status.setStyleSheet("color:#D84315;")
+
+        t2 = QLabel("모드 :")
+        t2.setFont(font_title)
+        self.lbl_jetco_mode = QLabel("-")
+        self.lbl_jetco_mode.setFont(font_val)
+        self.lbl_jetco_mode.setStyleSheet("color:#1565C0;")
+
+        left_status_layout.addWidget(t1)
+        left_status_layout.addWidget(self.lbl_jetco_status)
+        left_status_layout.addSpacing(30)
+        left_status_layout.addWidget(t2)
+        left_status_layout.addWidget(self.lbl_jetco_mode)
+
+    
+        # ===== 오른쪽 그룹 (storage 전용)
+        right_status_layout = QHBoxLayout()
+
+        self.lbl_slot_title = QLabel("slot_id :")
+        self.lbl_slot_title.setFont(font_title)
+
+        self.lbl_slot_value = QLabel("-")
+        self.lbl_slot_value.setFont(font_val)
+
+        self.lbl_part_title = QLabel("part_id :")
+        self.lbl_part_title.setFont(font_title)
+
+        self.lbl_part_value = QLabel("-")
+        self.lbl_part_value.setFont(font_val)
+
+        right_status_layout.addWidget(self.lbl_slot_title)
+        right_status_layout.addWidget(self.lbl_slot_value)
+        right_status_layout.addSpacing(30)
+        right_status_layout.addWidget(self.lbl_part_title)
+        right_status_layout.addWidget(self.lbl_part_value)
+
+
+        # ===== 좌우 배치
+        status_layout.addLayout(left_status_layout, 1)
+        status_layout.addLayout(right_status_layout, 1)
+
+        main_jet_layout.addLayout(status_layout)
+
+        # ===============================
+        # 🔹 2️⃣ 버튼 영역 (가로 분할)
+        button_area = QHBoxLayout()
+
+        # 왼쪽 버튼 영역
+        left_layout = QVBoxLayout()
+        self.btn_jetco_common1 = QPushButton("p&p start")
+        self.btn_jetco_common2 = QPushButton("test_btn")
+
+        for btn in [self.btn_jetco_common1, self.btn_jetco_common2]:
+            btn.setMinimumHeight(50)
+            btn.setStyleSheet("background-color:#FB8C00; color:white; font-weight:bold;")
+            left_layout.addWidget(btn)
+
+        left_layout.addStretch()
+
+        # 오른쪽 버튼 영역
+        right_layout = QVBoxLayout()
+        self.btn_jetco_action1 = QPushButton("Action1")
+        self.btn_jetco_action1.clicked.connect(self.handle_send)
+        self.btn_jetco_action2 = QPushButton("Action2")
+
+        for btn in [self.btn_jetco_action1, self.btn_jetco_action2]:
+            btn.setMinimumHeight(50)
+            btn.setStyleSheet("background-color:#EF6C00; color:white; font-weight:bold;")
+            right_layout.addWidget(btn)
+
+        # assembly 전용 토글
+        self.assembly_box = CollapsibleBox("Assembly 선택")
+        for i in range(1, 4):
+            btn = QPushButton(f"모듈{i}")
+            btn.clicked.connect(lambda _, m=f"모듈{i}": self.select_module(m))
+            self.assembly_box.add_widget(btn)
+
+        right_layout.addWidget(self.assembly_box)
+
+        right_layout.addStretch()
+
+        button_area.addLayout(left_layout, 1)
+        button_area.addLayout(right_layout, 1)
+
+        main_jet_layout.addLayout(button_area)
+
+        self.jetcobot_shared_panel.hide()
+
+        ##############################################3
+
+
+        layout.addWidget(self.pinky_shared_panel)
+        layout.addWidget(self.jetcobot_shared_panel)
+        self.jetcobot_shared_panel.hide()
+        self.pinky_shared_panel.hide()
+        layout.addStretch(1)
+        self.tab_status.setLayout(layout)
 
     # [수동 조작 명령 전송 함수]
     def send_manual_cmd(self, direction):
@@ -555,13 +801,78 @@ class RobotControlSystem(QWidget):
             self.ros_thread.send_unload_done(self.current_viewing_robot)
             self.add_log(f"명령 전송: {self.current_viewing_robot} -> /unload_done True")
             QMessageBox.information(self, "명령", "하차 완료 명령 전송")
+    
+    # assembly 전용 토글
+    def select_module(self, module_name):
+        self.selected_module = module_name
+        self.assembly_box.set_selected(module_name)
+
+    # assembly 전용 토글 - send 버튼 연결
+    def handle_send(self):
+        if not self.selected_module:
+            QMessageBox.warning(self, "오류", "모듈을 먼저 선택하세요")
+            return
+
+        module_code = self.module_map[self.selected_module]
+        # self.ros_thread.send_module_command(module_code)
+        self.add_log(f"{self.current_viewing_robot} -> {module_code} 명령 전송")
+        QMessageBox.information(self, "명령", f"{self.selected_module} 명령 전송 완료")
+
+
     # ros2 trigger node test
     def trigger_manip_start(self):
         self.ros_thread.send_manip_start()
 
     def select_robot(self, robot_id):
         self.current_viewing_robot = robot_id.lower().replace(" ", "")
-        self.info_label.hide(); self.detail_panel.show(); self.tabs.setCurrentIndex(0)
+        
+        self.info_label.hide()
+        self.tabs.setCurrentIndex(0)
+        self.pinky_all_panel.hide()
+        self.pinky_shared_panel.hide()
+        self.jetcobot_shared_panel.hide()
+        if robot_id == "main_control":
+            self.pinky_all_panel.show()
+
+        elif "pinky" in robot_id:
+            self.pinky_shared_panel.show()
+
+        elif "jetcobot" in robot_id:
+            self.jetcobot_shared_panel.show()
+
+            if robot_id == "jetcobot1":  # storage
+                self.btn_jetco_action1.setText("Auto_Mode")
+                self.btn_jetco_action2.setText("Manual_Mode")
+
+                self.lbl_slot_title.show()
+                self.lbl_slot_value.show()
+                self.lbl_part_title.show()
+                self.lbl_part_value.show()
+
+                self.assembly_box.hide()
+
+            elif robot_id == "jetcobot2":  # assembly
+                self.btn_jetco_action1.setText("send")
+                self.btn_jetco_action2.setText("test_btn1")
+
+                self.lbl_slot_title.hide()
+                self.lbl_slot_value.hide()
+                self.lbl_part_title.hide()
+                self.lbl_part_value.hide()
+
+                self.assembly_box.show()
+
+            elif robot_id == "jetcobot3":
+                self.btn_jetco_action1.setText("test_btn1")
+                self.btn_jetco_action2.setText("test_btn2")
+
+                self.lbl_slot_title.hide()
+                self.lbl_slot_value.hide()
+                self.lbl_part_title.hide()
+                self.lbl_part_value.hide()
+
+                self.assembly_box.hide()
+
         is_pinky = "pinky" in self.current_viewing_robot
         self.btn_load_complete.setVisible(is_pinky); self.btn_unload_complete.setVisible(is_pinky)
         
