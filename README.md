@@ -16,3 +16,6 @@ domain은 system_bridge/domain_bridge/smartfactory_bridge.yaml 에서 수정하�
 ### gui_pkg 설명
 1. main_window.py - 버튼, 레이블, UI 이벤트 처리 담당, 버튼 동작 코드 여기
 2. gui_node.py - ROS2 통신 전담 노드 (rclpy Node) - ROS 통신은 전부 여기
+
+### system_bridge 설명
+1. smartfactory_bridge.yaml - domain id 연동 , 토픽 정의는 여기
