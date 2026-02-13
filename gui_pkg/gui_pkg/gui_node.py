@@ -204,6 +204,7 @@ class GuiNode(QThread):
         except Exception as e:
             print(f"Jetcobot Update Error: {e}")
 
+    # 🔥 GUI 로봇 데이터 update point
     def pose_callback(self, msg, robot_id):
         clean_id = robot_id.replace("/", "")
         x_m = msg.pose.pose.position.x
@@ -223,6 +224,22 @@ class GuiNode(QThread):
         data = {"id": clean_id, "state": msg.data}
         self.robot_update_signal.emit(data)
 
+    def send_manip_start(self):
+        if self.manip_start_pub:
+            msg = Bool()
+            msg.data = True
+            self.manip_start_pub.publish(msg)
+
+            print("▶ Published /pick_and_place/start = True")
+
+            data = {
+                "id": "jetcobot3",   # openmanipulator id
+                "status": "PNP",
+                "mode": "작업중"
+            }
+            self.robot_update_signal.emit(data)
+
+    ##################################################
     def unload_callback(self, msg):
         self.unload_signal.emit(msg.data)
 

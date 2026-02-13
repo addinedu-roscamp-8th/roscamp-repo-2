@@ -8,13 +8,13 @@ def generate_launch_description():
     bridge_yaml = os.path.join(
         get_package_share_directory('system_bridge'),
         'domain_bridge',
-        'smartfactory_bridge.yaml'
+        'bridge_for_openmanipulator.yaml'
     )
 
     domain_bridge_node = Node(
         package='domain_bridge',
         executable='domain_bridge',
-        name='smartfactory_domain_bridge',
+        name='bridge_for_openmanipulator',
         output='screen',
         arguments=[bridge_yaml],
     )
