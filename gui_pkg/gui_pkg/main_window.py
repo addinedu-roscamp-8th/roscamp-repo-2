@@ -1285,7 +1285,6 @@ class RobotControlSystem(QWidget):
         self.camera_thread.stop()
         event.accept()
 
-
     ##############################################################################            
     # ros_thread connection method
     ##############################################################################
