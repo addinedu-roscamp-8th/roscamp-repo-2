@@ -117,7 +117,7 @@ class CameraThread(QThread):
         # aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
         # parameters = aruco.DetectorParameters()
         
-        url = "http://192.168.0.11:5000/video_feed" # 학원
+        url = "http://192.168.0.6:5000/video_feed" # 학원
         cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG) 
         ############## test
         if not cap.isOpened():
@@ -493,11 +493,11 @@ class RobotControlSystem(QWidget):
         left_btn_layout = QVBoxLayout()
         self.pinky_all_btn1 = QPushButton("작업 시작")
         self.pinky_all_btn1.clicked.connect(lambda _, b=self.pinky_all_btn1: self.apply_click_feedback(b))
-        self.pinky_all_btn1.clicked.connect(self.on_load_complete)        
+        self.pinky_all_btn1.clicked.connect(self.on_start_random_assignment) #지니      
 
         self.pinky_all_btn2 = QPushButton("작업종료")
         self.pinky_all_btn2.clicked.connect(lambda _, b=self.pinky_all_btn2: self.apply_click_feedback(b))
-        self.pinky_all_btn2.clicked.connect(self.on_load_complete) ## 연결필요!!!
+        self.pinky_all_btn2.clicked.connect(self.on_stop_all_assignments) #지니
 
         self.pinky_all_btn3 = QPushButton("test_ bnt")
         self.pinky_all_btn3.clicked.connect(lambda _, b=self.pinky_all_btn3: self.apply_click_feedback(b))
@@ -513,21 +513,21 @@ class RobotControlSystem(QWidget):
         self.pinky_content_area = QFrame()
         right_layout = QVBoxLayout(self.pinky_content_area)
 
-        self.right_btn1 = QPushButton("우측 버튼1")
+        self.right_btn1 = QPushButton("부품 상차 완료")
         self.right_btn1.clicked.connect(lambda _, b=self.right_btn1: self.apply_click_feedback(b))
-        self.right_btn1.clicked.connect(self.on_load_complete) ## 연결필요!!!
+        self.right_btn1.clicked.connect(lambda: self.send_done_by_role("1", "load")) #지니
         
-        self.right_btn2 = QPushButton("우측 버튼2")
+        self.right_btn2 = QPushButton("모듈 입고 완료")
         self.right_btn2.clicked.connect(lambda _, b=self.right_btn2: self.apply_click_feedback(b))
-        self.right_btn2.clicked.connect(self.on_load_complete) ## 연결필요!!!
+        self.right_btn2.clicked.connect(lambda: self.send_done_by_role("3", "unload")) #지니
 
-        self.right_btn3 = QPushButton("우측 버튼3")
+        self.right_btn3 = QPushButton("모듈 상차 완료")
         self.right_btn3.clicked.connect(lambda _, b=self.right_btn3: self.apply_click_feedback(b))
-        self.right_btn3.clicked.connect(self.on_load_complete) ## 연결필요!!!
+        self.right_btn3.clicked.connect(lambda: self.send_done_by_role("4", "load")) #지니
 
-        self.right_btn4 = QPushButton("우측 버튼4")
+        self.right_btn4 = QPushButton("모듈 출고 완료")
         self.right_btn4.clicked.connect(lambda _, b=self.right_btn4: self.apply_click_feedback(b))
-        self.right_btn4.clicked.connect(self.on_load_complete) ## 연결필요!!!
+        self.right_btn4.clicked.connect(lambda: self.send_done_by_role("4", "unload")) #지니
         
         for btn in [self.right_btn1, self.right_btn2, self.right_btn3, self.right_btn4]:
             self.setup_primary_button(btn, right_layout)
@@ -884,21 +884,28 @@ class RobotControlSystem(QWidget):
             QMessageBox.warning(self, "오류", "로봇을 먼저 선택해주세요.")
 
     # 자동 이동 명령 전송 함수
-    def send_nav_cmd(self, location, button_obj=None):
+    def send_nav_cmd(self, location, button_obj=None): #지니 
         if self.current_viewing_robot:
-            # 1. 로그 출력
-            self.add_log(f"[{self.current_viewing_robot}] 자동 이동 명령: {location}")
+            role_map = {
+                "INSPECTION_ZONE": "1",
+                "PARTS_WAREHOUSE": "4",
+                "ASSEMBLY_ZONE": "3",
+            }
+            role_id = role_map.get(location)
+            if role_id:
+                self.ros_thread.send_move_role(self.current_viewing_robot, role_id)
+                self.add_log(f"[{self.current_viewing_robot}] 자동 이동 명령: {location} -> /move_role {role_id}")
+                self.refresh_assignment_ui()
+            else:
+                self.add_log(f"[{self.current_viewing_robot}] 자동 이동 명령: {location}")
             
             # 2. 상태 메시지 업데이트
             target_name = ""
             if location == "INSPECTION_ZONE": target_name = "검수대 이동중"
-            elif location == "PARTS_WAREHOUSE": target_name = "부품창고 이동중"
+            elif location == "PARTS_WAREHOUSE": target_name = "모듈 창고 이동중"
             elif location == "ASSEMBLY_ZONE": target_name = "조립대 이동중"
             self.lbl_state.setText(target_name)
 
-            # 3. 버튼 깜빡임 효과
-            if button_obj:
-                self.apply_click_feedback(button_obj)
                 
         else:
             QMessageBox.warning(self, "오류", "로봇을 먼저 선택해주세요.")

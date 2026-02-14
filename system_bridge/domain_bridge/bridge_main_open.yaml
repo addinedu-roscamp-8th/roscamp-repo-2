@@ -1,14 +1,9 @@
 # bridge_for_openmanipulator
-
-name: bridge_for_openmanipulator
+name: main_to_openmanipulator
 from_domain: 30
 to_domain: 31
 
 topics:
   /pick_and_place/start:
     type: std_msgs/msg/Bool
-    
-  /pick_and_place/done:
-    type: std_msgs/msg/Bool
-    reversed: true
     

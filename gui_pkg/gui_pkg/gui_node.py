@@ -66,7 +66,8 @@ class GuiNode(QThread):
         self.load_done_pubs = {}
         self.unload_done_pubs = {}
         self.move_role_pubs = {}
-        self.arm_pub = None 
+        self.arm_pub = None
+        self.robot_role_assignments = {}
         self.jetco_res_pub = None # Response 발행용
 
     def run(self):
@@ -291,8 +292,29 @@ class GuiNode(QThread):
         if target_key in self.move_role_pubs:
             msg = String(); msg.data = str(role_id)
             self.move_role_pubs[target_key].publish(msg)
+            clean_robot_id = target_key.lstrip("/") # 지니 : 로봇아이디 분리
+            self.robot_role_assignments[clean_robot_id] = msg.data # 지니 : 로봇별 할당된 업무 저장
             print(f"이동 역할 전송 [{target_key}]: {msg.data}")
         else: print(f"❌ 로봇을 찾을 수 없음: {robot_id}")
+            
+    #지니 : 업무 랜덤 할당하는 함수
+    def assign_random_work_and_move(self): 
+        assignments = {}
+        if not self.move_role_pubs:
+            print("❌ move_role 퍼블리셔가 아직 준비되지 않았습니다.")
+            return assignments
+
+        robot_keys = sorted(self.move_role_pubs.keys())
+        available_roles = ["1", "3", "4"]
+        random.shuffle(available_roles)                                 ################# 🔷 수정필요! 
+
+        for robot_key, role_id in zip(robot_keys, available_roles):
+            robot_id = robot_key.lstrip("/")
+            self.send_move_role(robot_id, role_id)
+            assignments[robot_id] = role_id
+
+        print(f"랜덤 업무 할당 완료: {assignments}")
+        return assignments
 
     def send_arm_target(self, slot_id):
         if self.arm_pub:

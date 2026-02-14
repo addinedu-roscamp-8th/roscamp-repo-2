@@ -17,8 +17,13 @@ find_package(rosidl_default_generators REQUIRED)
 # Topic / Service / Action Message Files
 # --------------------------------------------------
 set(msg_files
-  "msg/TestInterface.msg"
-
+  "msg/Part.msg"
+  "msg/PartArray.msg"
+  "msg/SectionResult.msg"
+  "msg/StorageResponse.msg"
+  "msg/StorageRequest.msg"
+  "msg/ManualRequest.msg"
+  "msg/ManualResponse.msg"
   )
 
 set(srv_files

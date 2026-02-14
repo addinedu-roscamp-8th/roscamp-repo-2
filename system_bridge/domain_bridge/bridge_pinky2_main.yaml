@@ -1,0 +1,41 @@
+# bridge_for_pinky_c0bd
+name: pinky2_to_main
+from_domain: 35
+to_domain: 30
+
+topics:
+  /arrived_point:
+    type: std_msgs/msg/Int32
+  
+  /battery/present:
+    type: std_msgs/msg/Float32
+    remap: /pinky2/battery/present
+   
+  /amcl_pose:
+    type: geometry_msgs/msg/PoseWithCovarianceStamped
+    remap: /pinky2/amcl_pose
+    
+  /jetcobot/pick_and_place/done:
+    type: std_msgs/msg/Bool
+    reversed: true
+
+  /pick_and_place/done:
+    type: std_msgs/msg/Bool
+    reversed: true
+    
+  /pinky2/load_done:
+    type: std_msgs/msg/Bool
+    reversed: true
+    remap: /load_done
+
+  /pinky2/unload_done:
+    type: std_msgs/msg/Bool
+    reversed: true
+    remap: /unload_done
+    
+  /pinky2/move_role:
+    type: std_msgs/msg/String
+    reversed: true
+    remap: /move_role
+
+  

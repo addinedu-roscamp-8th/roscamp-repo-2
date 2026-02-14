@@ -5,20 +5,26 @@ import os
 
 def generate_launch_description():
 
-    bridge_yaml = os.path.join(
+    bridge_dir = os.path.join(
         get_package_share_directory('system_bridge'),
-        'domain_bridge',
-        'bridge_for_openmanipulator.yaml'
+        'domain_bridge'
     )
 
-    domain_bridge_node = Node(
-        package='domain_bridge',
-        executable='domain_bridge',
-        name='bridge_for_openmanipulator',
-        output='screen',
-        arguments=[bridge_yaml],
-    )
+    launch_nodes = []
 
-    return LaunchDescription([
-        domain_bridge_node
-    ])
+    # domain_bridge 폴더 안의 모든 yaml 파일 검색
+    for file in os.listdir(bridge_dir):
+        if file.endswith('.yaml'):
+            yaml_path = os.path.join(bridge_dir, file)
+
+            node = Node(
+                package='domain_bridge',
+                executable='domain_bridge',
+                name=f"bridge_{file.replace('.yaml','')}",
+                output='screen',
+                arguments=[yaml_path],
+            )
+
+            launch_nodes.append(node)
+
+    return LaunchDescription(launch_nodes)

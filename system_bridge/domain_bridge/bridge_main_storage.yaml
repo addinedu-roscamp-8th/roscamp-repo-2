@@ -1,0 +1,21 @@
+# bridge_for_jetcobot_storage
+
+name: main_to_storage
+from_domain: 30
+to_domain: 32
+
+topics:
+  /jetcobot/storage/boot:
+    type: std_msgs/msg/Bool
+
+  /jetcobot/storage/db_update:
+    type: smartfactory_interfaces/msg/SectionResult
+
+  /jetcobot/storage/manual/request:
+    type: smartfactory_interfaces/msg/ManualRequest
+
+  /jetcobot/storage/auto/response:
+    type: smartfactory_interfaces/msg/StorageResponse
+
+  /jetcobot/assembly/start:
+    type: std_msgs/msg/Bool
