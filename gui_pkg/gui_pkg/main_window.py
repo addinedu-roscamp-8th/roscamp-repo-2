@@ -14,9 +14,11 @@ from PyQt6.QtGui import QImage, QPixmap, QPainter, QBrush, QColor, QFont, QPen
 
 os.environ["QT_QPA_PLATFORM"] = "xcb"
 
-# ========================================================
-# [설정] 여기서 토픽 이름만 바꾸면 됨!
-# ========================================================
+##############################################################################
+# Global Configuration
+# DB / Map / Part Mapping
+##############################################################################
+
 
 # 4. DB 설정
 DB_HOST = 'localhost'
@@ -31,8 +33,10 @@ REAL_MAP_HEIGHT_CM = 83
 # 6. 부품 매핑 (ArUco ID -> 구역)
 PART_MAPPING = { 1: 'A', 2: 'B', 3: 'A' }
 
-# ========================================================
-# DB 자동 초기화 함수
+##############################################################################
+# Database System
+# DB initialization / CRUD
+##############################################################################
 def initialize_database():
     """DB 테이블 및 기초 데이터 자동 생성 함수"""
     try:
@@ -102,8 +106,10 @@ def initialize_database():
     except Exception as e:
         print(f"⚠️ [DB 경고] 초기화 중 오류 발생 (무시 가능): {e}")
 
-# ==========================================
-# [카메라] 쓰레드
+##############################################################################
+# Camera System
+# ArUco detection / IP camera / dummy mode
+##############################################################################
 class CameraThread(QThread):
     changePixmap = pyqtSignal(QImage)
     matchFound = pyqtSignal(int) 
@@ -231,8 +237,10 @@ class CameraThread(QThread):
     def stop(self):
         self.running = False; self.wait()
 
-# ==========================================
-# [지도 위젯]
+##############################################################################
+# UI Widgets
+# Map / WarehouseCard / CollapsibleBox
+##############################################################################
 class SimpleMapWidget(QWidget):
     def __init__(self):
         super().__init__()
@@ -323,8 +331,10 @@ class CollapsibleBox(QWidget):
         self.base_title = f"{text}"
         arrow = "▲" if self.toggle_button.isChecked() else "▼"
         self.toggle_button.setText(f"{arrow} {self.base_title}")
-# ==========================================
-# [메인 시스템]
+
+##############################################################################
+# Main Robot Control System
+##############################################################################
 class RobotControlSystem(QWidget):
     def __init__(self, ros_thread):
         super().__init__()
@@ -349,9 +359,6 @@ class RobotControlSystem(QWidget):
         }
 
         self.initUI()
-        ######################################################################
-        # ros_thread section
-        ######################################################################
         self.ros_thread.robot_update_signal.connect(self.update_ros_data)
         self.ros_thread.unload_signal.connect(self.handle_unload_event)
         
@@ -373,6 +380,11 @@ class RobotControlSystem(QWidget):
         self.timer.timeout.connect(self.load_verification_table)
         self.timer.start(2000)
 
+
+    ##############################################################################
+    # UI Layout & Widget Setup
+    # 버튼 생성 / 시트 구성 / 탭 배치
+    ##############################################################################
     def initUI(self):
         self.setWindowTitle('Smart Factory - Integrated System (Parametrized)')
         self.resize(1400, 900) 
@@ -426,26 +438,6 @@ class RobotControlSystem(QWidget):
         bot_layout.addWidget(self.control_group, 2); bot_layout.addWidget(self.tabs, 8)
         main_layout.addLayout(bot_layout); self.setLayout(main_layout); self.show()
 
-    def handle_unload_event(self, aruco_id):
-        self.add_log(f"출고 신호 수신: ID {aruco_id}")
-        try:
-            conn = mysql.connector.connect(host=DB_HOST, user=DB_USER, password=DB_PASS, database=DB_NAME)
-            cursor = conn.cursor()
-            sql = "UPDATE request_list SET current_qty = GREATEST(current_qty - 1, 0) WHERE aruco_id = %s"
-            cursor.execute(sql, (aruco_id,))
-            sql_free = "UPDATE warehouse_slots SET is_occupied=0, current_part_id=NULL WHERE current_part_id=%s LIMIT 1"
-            cursor.execute(sql_free, (aruco_id,))
-            conn.commit(); conn.close()
-            self.load_verification_table()
-            self.add_log(f"출고 및 슬롯 해제 완료: ID {aruco_id}")
-        except Exception as e: print(f"DB Error: {e}")
-
-    def on_tab_changed(self, index):
-        if index == 2: 
-            self.map_widget.hide(); self.control_group.hide()
-            self.load_verification_table(); self.load_quote_history() 
-        else: 
-            self.map_widget.show(); self.control_group.show()
     ######################################################################
     # UI button 관리
     def setup_status_tab(self):
@@ -874,7 +866,77 @@ class RobotControlSystem(QWidget):
 
         else:
             QMessageBox.warning(self, "오류", "지원되지 않는 로봇")
-##########################################################################################
+
+    def setup_log_tab(self):
+        layout = QVBoxLayout()
+        self.log_text_edit = QTextEdit(); self.log_text_edit.setReadOnly(True)
+        layout.addWidget(self.log_text_edit); self.tab_log.setLayout(layout)
+
+    def setup_db_tab_full(self):
+        main = QVBoxLayout(); top = QHBoxLayout()
+        
+        grp_warehouse = QGroupBox("창고 현황")
+        layout_warehouse = QHBoxLayout() # 전체 가로 배치
+
+        sections = ['A', 'B', 'C']
+        for section in sections:
+            # 각 구역별 그룹박스 (예: 창고 A)
+            grp_section = QGroupBox(f"창고 {section}")
+            layout_section = QVBoxLayout() # 내부 세로 배치
+            layout_section.setSpacing(5)
+            layout_section.setContentsMargins(5, 10, 5, 5)
+
+            for i in range(1, 4): # 1, 2, 3
+                slot_id = f"{section}-{i}"
+                # 카드 생성 (타이틀: 1번 칸)
+                card = WarehouseCard(f"{i}번 칸", slot_id) 
+                layout_section.addWidget(card)
+                self.warehouse_cards[slot_id] = card # 갱신을 위해 저장
+            
+            grp_section.setLayout(layout_section)
+            layout_warehouse.addWidget(grp_section)
+
+        grp_warehouse.setLayout(layout_warehouse)
+
+        # 나머지 UI
+        grp_c = QGroupBox("제어 패널"); grp_c.setMaximumHeight(150); lc = QVBoxLayout()
+        in_l = QHBoxLayout(); self.part_input = QLineEdit(); self.part_input.setPlaceholderText("부품 ID")
+        btn_s = QPushButton("검색"); btn_s.clicked.connect(self.on_search_clicked)
+        self.lbl_res = QLabel("결과: -"); in_l.addWidget(QLabel("ID:")); in_l.addWidget(self.part_input); in_l.addWidget(btn_s); in_l.addWidget(self.lbl_res)
+        btns = QHBoxLayout(); b1=QPushButton("최신 주문"); b1.clicked.connect(self.load_latest_order_from_db)
+        b2=QPushButton("새로고침"); b2.clicked.connect(self.load_verification_table)
+        b3=QPushButton("초기화"); b3.setStyleSheet("background-color: #f44336; color: white;"); b3.clicked.connect(self.reset_db)
+        btns.addWidget(b1); btns.addWidget(b2); btns.addWidget(b3)
+        lc.addLayout(in_l); lc.addLayout(btns); grp_c.setLayout(lc)
+        grp_h = QGroupBox("주문 이력"); grp_h.setMaximumHeight(150); lh = QVBoxLayout()
+        self.history_table = QTableWidget(); self.history_table.setColumnCount(3)
+        self.history_table.setHorizontalHeaderLabels(["No.", "프로젝트", "날짜"])
+        self.history_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.history_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.history_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.history_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.history_table.cellClicked.connect(self.on_history_cell_clicked)
+        lh.addWidget(self.history_table); grp_h.setLayout(lh)
+        top.addWidget(grp_c, 6); top.addWidget(grp_h, 4)
+        bot = QHBoxLayout()
+        
+        # 검수 목록 테이블
+        grp_t = QGroupBox("검수 목록"); lt = QVBoxLayout()
+        self.db_table = QTableWidget(); self.db_table.setColumnCount(5)
+        self.db_table.setHorizontalHeaderLabels(["ID", "제품명", "목표", "현재", "상태"])
+        self.db_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        lt.addWidget(self.db_table); grp_t.setLayout(lt)
+        
+        bot.addWidget(grp_warehouse, 1); bot.addWidget(grp_t, 1)
+        main.addLayout(top); main.addLayout(bot)
+        self.tab_db.setLayout(main)
+
+    def on_tab_changed(self, index):
+        if index == 2: 
+            self.map_widget.hide(); self.control_group.hide()
+            self.load_verification_table(); self.load_quote_history() 
+        else: 
+            self.map_widget.show(); self.control_group.show()
 
     # 수동 조작 명령 전송 함수
     def send_manual_cmd(self, direction):
@@ -974,99 +1036,121 @@ class RobotControlSystem(QWidget):
             self.lbl_name.setText(display_name)
             self.lbl_bat.setText("-"); self.lbl_state.setText("-"); self.lbl_loc.setText("-")
 
-    def update_ros_data(self, data):
-        rid = data.get("id", "")
-        if not rid: return
-        if rid not in self.robot_data_storage: self.robot_data_storage[rid] = {}
-        self.robot_data_storage[rid].update(data)
-        if "location" in data:
-            try:
-                loc = data["location"]
-                x, y = map(int, loc.split(","))
-                self.map_widget.update_position(self.robot_name_map.get(rid, rid), x, y)
-            except: pass
-        if self.current_viewing_robot == rid: 
-            self.refresh_detail_view(self.robot_data_storage[rid])
+    # assembly 전용 토글
+    def select_module(self, module_name):
+        self.selected_module = module_name
+        self.assembly_box.set_selected(module_name)
 
-    def refresh_detail_view(self, data):
-        rid = data.get("id", "")
-        display_name = self.robot_name_map.get(rid, rid.upper() if rid else "Unknown")
-        
-        self.lbl_name.setText(display_name)
-        if "battery" in data: self.lbl_bat.setText(f"{data['battery']:.2f}%")
-        if "state" in data: self.lbl_state.setText(data['state'])
-        if "location" in data: self.lbl_loc.setText(data['location'])
-        if "status" in data: self.lbl_jetco_status_value.setText(data["status"])
-        if "mode" in data: self.lbl_jetco_mode_vale.setText(data["mode"])
-        if "slot_id" in data: self.lbl_slot_value.setText(data["slot"])
-        if "part_id" in data: self.lbl_part_value.setText(data["part"])
+    # log
+    def add_log(self, message):
+        ts = datetime.datetime.now().strftime("%H:%M:%S")
+        if self.log_text_edit: self.log_text_edit.append(f"[{ts}] {message}")
+
+    ##########################################
+    # button effect, styles Setting
+    ##########################################
+    # button blink effect
+    def apply_click_feedback(self, button_obj):
+        if not button_obj:
+            return
+
+        button_obj.setDown(True)
+
+        button_obj.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                font-weight: bold;
+                padding: 10px;
+                border-radius: 6px;
+            }
+
+            QPushButton:pressed {
+                background-color: #1976D2;
+                padding-top: 12px;
+                padding-left: 12px;
+            }
+        """)
+
+        QTimer.singleShot(
+            120,
+            lambda: button_obj.setDown(False)
+        )
+
+    # Label style 
+    def style_info_label(self, widget):
+        widget.setStyleSheet("""
+            QLabel {
+                background-color: #F0F8FF;
+                border-radius: 8px;
+                border: 1px solid #90CAF9;
+                padding: 4px;
+            }
+        """)
+
+        font = QFont("Arial", 14, QFont.Weight.Bold)
+        widget.setFont(font)
+
+    # Label style1
+    def style_info_label_1(self, widget):
+        widget.setStyleSheet("""
+            QLabel {
+                background-color: #F0F8FF;
+                border-radius: 8px;
+                border: 1px solid #90CAF9;
+                padding: 4px;
+            }
+        """)
+
+        font = QFont("Arial", 14, QFont.Weight.Bold)
+        widget.setFont(font)
+
+    # button stlye
+    def setup_primary_button(self, button, layout=None):
+        button.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                font-weight: bold;
+                padding: 10px;
+                border-radius: 6px;
+            }
+            QPushButton:pressed {
+                background-color: #1976D2;
+            }
+        """)
+
+        button.setMinimumHeight(50)
+        button.setSizePolicy(QSizePolicy.Policy.Expanding,
+                            QSizePolicy.Policy.Fixed)
+
+        if layout is not None:
+            layout.addWidget(button)
 
 
+    ##############################################################################
+    # Button Event Handlers
+    # 버튼에 연결되는 실제 동작 로직
+    ##############################################################################
+
+    # camera
     def update_camera_image(self, image): self.top_camera_label.setPixmap(QPixmap.fromImage(image))
     
-    def setup_log_tab(self):
-        layout = QVBoxLayout()
-        self.log_text_edit = QTextEdit(); self.log_text_edit.setReadOnly(True)
-        layout.addWidget(self.log_text_edit); self.tab_log.setLayout(layout)
 
-    def setup_db_tab_full(self):
-        main = QVBoxLayout(); top = QHBoxLayout()
-        
-        grp_warehouse = QGroupBox("창고 현황")
-        layout_warehouse = QHBoxLayout() # 전체 가로 배치
-
-        sections = ['A', 'B', 'C']
-        for section in sections:
-            # 각 구역별 그룹박스 (예: 창고 A)
-            grp_section = QGroupBox(f"창고 {section}")
-            layout_section = QVBoxLayout() # 내부 세로 배치
-            layout_section.setSpacing(5)
-            layout_section.setContentsMargins(5, 10, 5, 5)
-
-            for i in range(1, 4): # 1, 2, 3
-                slot_id = f"{section}-{i}"
-                # 카드 생성 (타이틀: 1번 칸)
-                card = WarehouseCard(f"{i}번 칸", slot_id) 
-                layout_section.addWidget(card)
-                self.warehouse_cards[slot_id] = card # 갱신을 위해 저장
-            
-            grp_section.setLayout(layout_section)
-            layout_warehouse.addWidget(grp_section)
-
-        grp_warehouse.setLayout(layout_warehouse)
-
-        # 나머지 UI
-        grp_c = QGroupBox("제어 패널"); grp_c.setMaximumHeight(150); lc = QVBoxLayout()
-        in_l = QHBoxLayout(); self.part_input = QLineEdit(); self.part_input.setPlaceholderText("부품 ID")
-        btn_s = QPushButton("검색"); btn_s.clicked.connect(self.on_search_clicked)
-        self.lbl_res = QLabel("결과: -"); in_l.addWidget(QLabel("ID:")); in_l.addWidget(self.part_input); in_l.addWidget(btn_s); in_l.addWidget(self.lbl_res)
-        btns = QHBoxLayout(); b1=QPushButton("최신 주문"); b1.clicked.connect(self.load_latest_order_from_db)
-        b2=QPushButton("새로고침"); b2.clicked.connect(self.load_verification_table)
-        b3=QPushButton("초기화"); b3.setStyleSheet("background-color: #f44336; color: white;"); b3.clicked.connect(self.reset_db)
-        btns.addWidget(b1); btns.addWidget(b2); btns.addWidget(b3)
-        lc.addLayout(in_l); lc.addLayout(btns); grp_c.setLayout(lc)
-        grp_h = QGroupBox("주문 이력"); grp_h.setMaximumHeight(150); lh = QVBoxLayout()
-        self.history_table = QTableWidget(); self.history_table.setColumnCount(3)
-        self.history_table.setHorizontalHeaderLabels(["No.", "프로젝트", "날짜"])
-        self.history_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.history_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.history_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.history_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.history_table.cellClicked.connect(self.on_history_cell_clicked)
-        lh.addWidget(self.history_table); grp_h.setLayout(lh)
-        top.addWidget(grp_c, 6); top.addWidget(grp_h, 4)
-        bot = QHBoxLayout()
-        
-        # 검수 목록 테이블
-        grp_t = QGroupBox("검수 목록"); lt = QVBoxLayout()
-        self.db_table = QTableWidget(); self.db_table.setColumnCount(5)
-        self.db_table.setHorizontalHeaderLabels(["ID", "제품명", "목표", "현재", "상태"])
-        self.db_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        lt.addWidget(self.db_table); grp_t.setLayout(lt)
-        
-        bot.addWidget(grp_warehouse, 1); bot.addWidget(grp_t, 1)
-        main.addLayout(top); main.addLayout(bot)
-        self.tab_db.setLayout(main)
+    # MYSLQ DB #############################################################
+    def handle_unload_event(self, aruco_id):
+        self.add_log(f"출고 신호 수신: ID {aruco_id}")
+        try:
+            conn = mysql.connector.connect(host=DB_HOST, user=DB_USER, password=DB_PASS, database=DB_NAME)
+            cursor = conn.cursor()
+            sql = "UPDATE request_list SET current_qty = GREATEST(current_qty - 1, 0) WHERE aruco_id = %s"
+            cursor.execute(sql, (aruco_id,))
+            sql_free = "UPDATE warehouse_slots SET is_occupied=0, current_part_id=NULL WHERE current_part_id=%s LIMIT 1"
+            cursor.execute(sql_free, (aruco_id,))
+            conn.commit(); conn.close()
+            self.load_verification_table()
+            self.add_log(f"출고 및 슬롯 해제 완료: ID {aruco_id}")
+        except Exception as e: print(f"DB Error: {e}")
 
     def on_history_cell_clicked(self, row, col):
         item = self.history_table.item(row, 0)
@@ -1182,6 +1266,7 @@ class RobotControlSystem(QWidget):
             conn.close()
         except Exception as e: 
             print(f"Update Error: {e}")
+    ########################################################################
 
     def reset_db(self):
         if QMessageBox.question(self, '확인', '초기화?', QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
@@ -1195,106 +1280,44 @@ class RobotControlSystem(QWidget):
                 QMessageBox.information(self, "완료", "초기화됨"); self.add_log("데이터 초기화됨")
             except Exception: pass
 
-    def add_log(self, message):
-        ts = datetime.datetime.now().strftime("%H:%M:%S")
-        if self.log_text_edit: self.log_text_edit.append(f"[{ts}] {message}")
-
-    # button blink effect
-    def apply_click_feedback(self, button_obj):
-        if not button_obj:
-            return
-
-        button_obj.setDown(True)
-
-        button_obj.setStyleSheet("""
-            QPushButton {
-                background-color: #2196F3;
-                color: white;
-                font-weight: bold;
-                padding: 10px;
-                border-radius: 6px;
-            }
-
-            QPushButton:pressed {
-                background-color: #1976D2;
-                padding-top: 12px;
-                padding-left: 12px;
-            }
-        """)
-
-        QTimer.singleShot(
-            120,
-            lambda: button_obj.setDown(False)
-        )
-
     def closeEvent(self, event):
         self.ros_thread.stop()
         self.camera_thread.stop()
         event.accept()
 
-    # label stlye
-    # def style_info_label(self, widget):
-    #     widget.setStyleSheet("""
-    #         background-color: #F0F8FF;
-    #         border-radius: 8px;
-    #         border: 1px solid #90CAF9;
-    #         padding: 4px;
-    #     """)
-
-    def style_info_label(self, widget):
-        widget.setStyleSheet("""
-            QLabel {
-                background-color: #F0F8FF;
-                border-radius: 8px;
-                border: 1px solid #90CAF9;
-                padding: 4px;
-            }
-        """)
-
-        font = QFont("Arial", 14, QFont.Weight.Bold)
-        widget.setFont(font)
-
-
-    def style_info_label_1(self, widget):
-        widget.setStyleSheet("""
-            QLabel {
-                background-color: #F0F8FF;
-                border-radius: 8px;
-                border: 1px solid #90CAF9;
-                padding: 4px;
-            }
-        """)
-
-        font = QFont("Arial", 14, QFont.Weight.Bold)
-        widget.setFont(font)
-
-    # button stlye
-    def setup_primary_button(self, button, layout=None):
-        button.setStyleSheet("""
-            QPushButton {
-                background-color: #2196F3;
-                color: white;
-                font-weight: bold;
-                padding: 10px;
-                border-radius: 6px;
-            }
-            QPushButton:pressed {
-                background-color: #1976D2;
-            }
-        """)
-
-        button.setMinimumHeight(50)
-        button.setSizePolicy(QSizePolicy.Policy.Expanding,
-                            QSizePolicy.Policy.Fixed)
-
-        if layout is not None:
-            layout.addWidget(button)
-
- 
 
     ##############################################################################            
     # ros_thread connection method
     ##############################################################################
+
+    # GUI Robot State Update System
+    def update_ros_data(self, data):
+        rid = data.get("id", "")
+        if not rid: return
+        if rid not in self.robot_data_storage: self.robot_data_storage[rid] = {}
+        self.robot_data_storage[rid].update(data)
+        if "location" in data:
+            try:
+                loc = data["location"]
+                x, y = map(int, loc.split(","))
+                self.map_widget.update_position(self.robot_name_map.get(rid, rid), x, y)
+            except: pass
+        if self.current_viewing_robot == rid: 
+            self.refresh_detail_view(self.robot_data_storage[rid])
+
+    def refresh_detail_view(self, data):
+        rid = data.get("id", "")
+        display_name = self.robot_name_map.get(rid, rid.upper() if rid else "Unknown")
+        
+        self.lbl_name.setText(display_name)
+        if "battery" in data: self.lbl_bat.setText(f"{data['battery']:.2f}%")
+        if "state" in data: self.lbl_state.setText(data['state'])
+        if "location" in data: self.lbl_loc.setText(data['location'])
+        if "status" in data: self.lbl_jetco_status_value.setText(data["status"])
+        if "mode" in data: self.lbl_jetco_mode_vale.setText(data["mode"])
+        if "slot_id" in data: self.lbl_slot_value.setText(data["slot"])
+        if "part_id" in data: self.lbl_part_value.setText(data["part"])
+
     def on_load_complete(self): 
         if self.current_viewing_robot:
             self.ros_thread.send_load_done(self.current_viewing_robot)
@@ -1307,11 +1330,6 @@ class RobotControlSystem(QWidget):
             self.add_log(f"명령 전송: {self.current_viewing_robot} -> /unload_done True")
             QMessageBox.information(self, "명령", "하차 완료 명령 전송")
     
-    # assembly 전용 토글
-    def select_module(self, module_name):
-        self.selected_module = module_name
-        self.assembly_box.set_selected(module_name)
-
     # assembly 전용 토글 - send 버튼 연결
     def handle_send(self):
         if not self.selected_module:
@@ -1319,7 +1337,7 @@ class RobotControlSystem(QWidget):
             return
 
         module_code = self.module_map[self.selected_module]
-        # self.ros_thread.
+        # self.ros_thread.                                           # ros_thread 연결
         self.add_log(f"{self.current_viewing_robot} -> {module_code} 명령 전송")
         QMessageBox.information(self, "명령", f"{self.selected_module} 명령 전송 완료")
 

@@ -1,4 +1,6 @@
-import json  # ★ JSON 처리를 위해 추가
+import json
+import random
+
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
@@ -9,9 +11,9 @@ from geometry_msgs.msg import Pose2D, PoseWithCovarianceStamped
 import mysql.connector
 from PyQt6.QtCore import QThread, pyqtSignal
 
+
 # 1. 모바일 로봇 관련
 T_MOBILE_PREFIX = "/pinky"
-
 T_SUFFIX_POSE    = "/amcl_pose"    # 위치 정보 (PoseWithCovarianceStamped)
 T_SUFFIX_BATTERY = "/battery/present" # 배터리 정보 (Float32)
 T_SUFFIX_STATE   = "/state"   # 상태 정보 (String)
@@ -58,16 +60,30 @@ class GuiNode(QThread):
     unload_signal = pyqtSignal(int)
     jetco_log_signal = pyqtSignal(str) # Jetcobot 로그용 신호
 
+    ############################################################################
+    # Lifecycle / Thread 제어
+    # 노드 생성 / spin / 종료 관리
+    ############################################################################
     def __init__(self):
         super().__init__()
+
+        # === Lifecycle / ROS Core ===
         self.node = None
         self.running = True
+
+        # === Mobile Robot Publishers ===
         self.cmd_pubs = {} 
         self.load_done_pubs = {}
         self.unload_done_pubs = {}
         self.move_role_pubs = {}
-        self.arm_pub = None
+
+        # === Mobile Robot State Tracking ===
         self.robot_role_assignments = {}
+        
+        # === Manipulator / Arm Communication ===
+        self.arm_pub = None
+        
+        # === Jetcobot Storage System ===
         self.jetco_res_pub = None # Response 발행용
 
     def run(self):
@@ -79,59 +95,145 @@ class GuiNode(QThread):
             history=HistoryPolicy.KEEP_LAST,
             depth=1,
         )
-        
-        # 1. Pinky 로봇 설정
-        if SINGLE_ROBOT_MODE:
-            # (기존 SINGLE 모드 코드 생략 없이 유지)
-            robot_name = SINGLE_ROBOT_ID
-            self.node.create_subscription(PoseWithCovarianceStamped, SINGLE_POSE_TOPIC,
-                                          lambda m, r=robot_name: self.pose_callback(m, r), amcl_pose_qos)
-            self.node.create_subscription(Float32, SINGLE_BATTERY_TOPIC,
-                                          lambda m, r=robot_name: self.battery_callback(m, r), 10)
-            self.node.create_subscription(String, SINGLE_STATE_TOPIC,
-                                          lambda m, r=robot_name: self.state_callback(m, r), 10)
-            self.cmd_pubs[f"/{robot_name}"] = self.node.create_publisher(String, SINGLE_CMD_TOPIC, 10)
-            self.load_done_pubs[f"/{robot_name}"] = self.node.create_publisher(Bool, SINGLE_LOAD_DONE_TOPIC, 10)
-            self.unload_done_pubs[f"/{robot_name}"] = self.node.create_publisher(Bool, SINGLE_UNLOAD_DONE_TOPIC, 10)
-            self.move_role_pubs[f"/{robot_name}"] = self.node.create_publisher(String, SINGLE_MOVE_ROLE_TOPIC, 10)
-        else:
-            for i in range(1, 4):
-                robot_name = f"{T_MOBILE_PREFIX}{i}"
-                self.node.create_subscription(PoseWithCovarianceStamped, f"{robot_name}{T_SUFFIX_POSE}",
-                                              lambda m, r=robot_name: self.pose_callback(m, r), amcl_pose_qos)
-                self.node.create_subscription(Float32, f"{robot_name}{T_SUFFIX_BATTERY}",
-                                              lambda m, r=robot_name: self.battery_callback(m, r), 10)
-                self.node.create_subscription(String, f"{robot_name}{T_SUFFIX_STATE}",
-                                              lambda m, r=robot_name: self.state_callback(m, r), 10)
-                self.cmd_pubs[robot_name] = self.node.create_publisher(String, f"{robot_name}{T_SUFFIX_CMD}", 10)
-                self.load_done_pubs[robot_name] = self.node.create_publisher(Bool, f"{robot_name}{T_SUFFIX_LOAD_DONE}", 10)
-                self.unload_done_pubs[robot_name] = self.node.create_publisher(Bool, f"{robot_name}{T_SUFFIX_UNLOAD_DONE}", 10)
-                self.move_role_pubs[robot_name] = self.node.create_publisher(String, f"{robot_name}{T_SUFFIX_MOVE_ROLE}", 10)
 
-        # 2. 로봇팔 (Jetcobot) 설정 [★추가된 부분]
-        # Request 구독 (String으로 받아서 내부에서 JSON 파싱)
-        self.node.create_subscription(String, T_JETCO_REQ, self.callback_jetco_request, 10)
-        # Update 구독
-        self.node.create_subscription(String, T_JETCO_UPD, self.callback_jetco_update, 10)
-        # Response 발행
-        self.jetco_res_pub = self.node.create_publisher(String, T_JETCO_RES, 10)
-
-        # Arm 통신
-        self.node.create_subscription(Int32, T_ARM_UNLOAD_SIGNAL, self.unload_callback, 10)
-        self.arm_pub = self.node.create_publisher(String, T_ARM_TARGET_SLOT, 10)
-
-        # OpenManipulator Start Publisher Test1
-        self.manip_start_pub = self.node.create_publisher(Bool,'/pick_and_place/start',10)
-       
-
+        ############################################################################
+        # ROS Interface Setup
+        ############################################################################
+        self.setup_mobile_interfaces(amcl_pose_qos)
+        self.setup_storage_interfaces()
+        self.setup_arm_interfaces()
+        self.setup_manipulator_interfaces()
         print(f"GUI 노드 시작 (토픽 설정 완료)")
+        ############################################################################
+        
         while self.running and rclpy.ok():
             rclpy.spin_once(self.node, timeout_sec=0.1)
             
         self.node.destroy_node()
         rclpy.shutdown()
 
-    # -------------------------------------------------------------
+    def stop(self):
+        self.running = False; self.wait()
+
+    ############################################################################
+    # ROS Interface Setup
+    ############################################################################
+    
+    # Mobile Robot Branch Point (Single, Multi)
+    def setup_mobile_interfaces(self, amcl_pose_qos):
+
+        # === Mobile Robot Interface Setup (Single / Multi Mode) ===
+        if SINGLE_ROBOT_MODE:
+            self._setup_single_robot(amcl_pose_qos)
+        else:
+            self._setup_multi_robot(amcl_pose_qos)
+
+    # Mobile Robot Single
+    def _setup_single_robot(self, amcl_pose_qos):
+        robot_name = SINGLE_ROBOT_ID
+
+        self.node.create_subscription(
+            PoseWithCovarianceStamped,
+            SINGLE_POSE_TOPIC,
+            lambda m, r=robot_name: self.pose_callback(m, r),
+            amcl_pose_qos
+        )
+
+        self.node.create_subscription(
+            Float32,
+            SINGLE_BATTERY_TOPIC,
+            lambda m, r=robot_name: self.battery_callback(m, r),
+            10
+        )
+
+        self.node.create_subscription(
+            String,
+            SINGLE_STATE_TOPIC,
+            lambda m, r=robot_name: self.state_callback(m, r),
+            10
+        )
+
+        key = f"/{robot_name}"
+        self.cmd_pubs[key] = self.node.create_publisher(String, SINGLE_CMD_TOPIC, 10)
+        self.load_done_pubs[key] = self.node.create_publisher(Bool, SINGLE_LOAD_DONE_TOPIC, 10)
+        self.unload_done_pubs[key] = self.node.create_publisher(Bool, SINGLE_UNLOAD_DONE_TOPIC, 10)
+        self.move_role_pubs[key] = self.node.create_publisher(String, SINGLE_MOVE_ROLE_TOPIC, 10)
+
+    # Mobile Robot Multi
+    def _setup_multi_robot(self, amcl_pose_qos):
+        for i in range(1, 4):
+            robot_name = f"{T_MOBILE_PREFIX}{i}"
+
+            self.node.create_subscription(
+                PoseWithCovarianceStamped,
+                f"{robot_name}{T_SUFFIX_POSE}",
+                lambda m, r=robot_name: self.pose_callback(m, r),
+                amcl_pose_qos
+            )
+
+            self.node.create_subscription(
+                Float32,
+                f"{robot_name}{T_SUFFIX_BATTERY}",
+                lambda m, r=robot_name: self.battery_callback(m, r),
+                10
+            )
+
+            self.node.create_subscription(
+                String,
+                f"{robot_name}{T_SUFFIX_STATE}",
+                lambda m, r=robot_name: self.state_callback(m, r),
+                10
+            )
+
+            self.cmd_pubs[robot_name] = self.node.create_publisher(
+                String, f"{robot_name}{T_SUFFIX_CMD}", 10
+            )
+
+            self.load_done_pubs[robot_name] = self.node.create_publisher(
+                Bool, f"{robot_name}{T_SUFFIX_LOAD_DONE}", 10
+            )
+
+            self.unload_done_pubs[robot_name] = self.node.create_publisher(
+                Bool, f"{robot_name}{T_SUFFIX_UNLOAD_DONE}", 10
+            )
+
+            self.move_role_pubs[robot_name] = self.node.create_publisher(
+                String, f"{robot_name}{T_SUFFIX_MOVE_ROLE}", 10
+            )
+    
+    # Storage interface
+
+
+    # Arm interface
+    # Jetcobot
+    def setup_storage_interfaces(self):
+        self.node.create_subscription(String, T_JETCO_REQ, self.callback_jetco_request, 10)
+        self.node.create_subscription(String, T_JETCO_UPD, self.callback_jetco_update, 10)
+        self.jetco_res_pub = self.node.create_publisher(String, T_JETCO_RES, 10)
+
+    def setup_arm_interfaces(self):
+        self.node.create_subscription(Int32, T_ARM_UNLOAD_SIGNAL, self.unload_callback, 10)
+        self.arm_pub = self.node.create_publisher(String, T_ARM_TARGET_SLOT, 10)
+    
+    # Openmanipulator
+    def setup_manipulator_interfaces(self):
+        self.manip_start_pub = self.node.create_publisher(
+            Bool, '/pick_and_place/start', 10
+        )
+
+    ############################################################################
+    # DB System
+    # DB 조회 / 업데이트
+    ############################################################################
+
+    # 가능하다면 DB 접근 로직은 별도 모듈로 분리해 주세요.
+    # 다만, 구현에 많은 시간이 소요될 경우에는 우선순위에서 제외해도 됩니다.
+
+    ############################################################################
+    # Jetcobot Storage System
+    # 자동 창고 요청 처리
+    ############################################################################
+
     # ★ [기능 1] Request 처리: DB 확인 후 Response 발행
     def callback_jetco_request(self, msg):
         try:
@@ -205,7 +307,11 @@ class GuiNode(QThread):
         except Exception as e:
             print(f"Jetcobot Update Error: {e}")
 
-    # 🔥 GUI 로봇 데이터 update point
+    ############################################################################
+    # GUI Robot State Update System
+    # ROS → GUI 데이터 전달
+    ############################################################################
+
     def pose_callback(self, msg, robot_id):
         clean_id = robot_id.replace("/", "")
         x_m = msg.pose.pose.position.x
@@ -225,24 +331,10 @@ class GuiNode(QThread):
         data = {"id": clean_id, "state": msg.data}
         self.robot_update_signal.emit(data)
 
-    def send_manip_start(self):
-        if self.manip_start_pub:
-            msg = Bool()
-            msg.data = True
-            self.manip_start_pub.publish(msg)
-
-            print("▶ Published /pick_and_place/start = True")
-
-            data = {
-                "id": "jetcobot3",   # openmanipulator id
-                "status": "PNP",
-                "mode": "작업중"
-            }
-            self.robot_update_signal.emit(data)
-
-    ##################################################
-    def unload_callback(self, msg):
-        self.unload_signal.emit(msg.data)
+    ############################################################################
+    # Mobile Robot Command Publishers
+    # GUI → Mobile 제어
+    ############################################################################
 
     def send_command(self, robot_id, cmd_str):
         target_key = robot_id if robot_id.startswith("/") else f"/{robot_id}"
@@ -306,7 +398,7 @@ class GuiNode(QThread):
 
         robot_keys = sorted(self.move_role_pubs.keys())
         available_roles = ["1", "3", "4"]
-        random.shuffle(available_roles)                                 ################# 🔷 수정필요! 
+        random.shuffle(available_roles)
 
         for robot_key, role_id in zip(robot_keys, available_roles):
             robot_id = robot_key.lstrip("/")
@@ -315,24 +407,43 @@ class GuiNode(QThread):
 
         print(f"랜덤 업무 할당 완료: {assignments}")
         return assignments
+    
+    ############################################################################
+    # Manipulator / Arm Control
+    # GUI → Mobile 제어
+    ############################################################################
 
     def send_arm_target(self, slot_id):
         if self.arm_pub:
             msg = String(); msg.data = slot_id
             self.arm_pub.publish(msg)
             print(f"로봇팔 목표 전송: {slot_id}")
-    
-    # OpenManipulator Start Publisher Test1
+
     def send_manip_start(self):
         if self.manip_start_pub:
             msg = Bool()
             msg.data = True
             self.manip_start_pub.publish(msg)
+
             print("▶ Published /pick_and_place/start = True")
 
-    def stop(self):
-        self.running = False; self.wait()
+            data = {
+                "id": "jetcobot3",   # openmanipulator id
+                "status": "PNP",
+                "mode": "작업중"
+            }
+            self.robot_update_signal.emit(data)
 
+
+
+
+    def unload_callback(self, msg):
+        self.unload_signal.emit(msg.data)
+
+    ############################################################################
+    # GUI Integration Helpers
+    # GUI 버튼 → ROS 함수 호출 (ros_thread)
+    ############################################################################
 
     def trigger_manip_start(self):
         self.ros_thread.send_manip_start()
