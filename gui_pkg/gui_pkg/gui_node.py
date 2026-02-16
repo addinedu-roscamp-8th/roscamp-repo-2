@@ -8,6 +8,8 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPo
 from std_msgs.msg import String, Int32, Float32, Bool
 from geometry_msgs.msg import Pose2D, PoseWithCovarianceStamped
 
+from smartfactory_interfaces.msg import SectionResult, StorageRequest, StorageResponse, ManualRequest
+
 import mysql.connector
 from PyQt6.QtCore import QThread, pyqtSignal
 
@@ -37,10 +39,21 @@ SINGLE_MOVE_ROLE_TOPIC = "/move_role"
 T_ARM_UNLOAD_SIGNAL = "/warehouse/unload"     # [수신] 로봇팔이 출고 완료했을 때 (Int)
 T_ARM_TARGET_SLOT   = "/robot_arm/target_slot" # [송신] 로봇팔에게 "여기다 넣어" 명령 (String)
 
-# 3. Jetcobot 자동 창고 시스템 (String/JSON 통신) -추가
-T_JETCO_REQ = "/jetcobot/storage/auto/request"   # [수신] 요청
-T_JETCO_RES = "/jetcobot/storage/auto/response"  # [발행] 응답
-T_JETCO_UPD = "/jetcobot/db_update"              # [수신] DB 업데이트
+# 3. Jetcobot 관련
+T_JETCO1_ID = "jetcobot1"
+T_JETCO2_ID = "jetcobot2"
+T_JETCO_REQ = "/jetcobot/storage/auto/request"   # [수신] 보관 장소 할당 요청
+T_JETCO_RES = "/jetcobot/storage/auto/response"  # [발행] 보관 장소 할당 응답
+T_JETCO_STR_UPD = "/jetcobot/storage/db_update"  # [수신] DB 업데이트
+T_JETCO_ASS_UPD = "/jetcobot/assembly/db_update" # [수신] DB 업데이트
+T_JETCO_ASS_BOOT = "/jetcobot/assembly/boot"     # [발행] 부팅 명령
+T_JETCO1_STATUS = "/jetcobot/storage/status"     # [수신] 로봇 상태
+T_JETCO2_STATUS = "/jetcobot/assembly/status"     # [수신] 로봇 상태
+T_JETCO1_SETMODE = "/jetcobot/storage/set_mode"  # [발행] 로봇 상태 설정
+T_JETCO1_MANUAL_REQ = "/jetcobot/storage/manual/request"   # [발행] 로봇 작업 요청
+T_JETCO1_MANUAL_RES = "/jetcobot/storage/manual/response"  # [수신] 로봇 작업 응답
+T_JETCO1_STR_BOOT = '/jetcobot/storage/boot'               # [발행] 부팅 명령
+T_JETCO2_STACK_REQ = "/jetcobot/assembly/stack/request"    # [발행] 로봇 작업 요청
 
 # 4. DB 설정
 DB_HOST = 'localhost'
@@ -59,6 +72,7 @@ class GuiNode(QThread):
     robot_update_signal = pyqtSignal(dict)  
     unload_signal = pyqtSignal(int)
     jetco_log_signal = pyqtSignal(str) # Jetcobot 로그용 신호
+    jetco_storage_boot_signal = pyqtSignal(bool)
 
     ############################################################################
     # Lifecycle / Thread 제어
@@ -100,7 +114,7 @@ class GuiNode(QThread):
         # ROS Interface Setup
         ############################################################################
         self.setup_mobile_interfaces(amcl_pose_qos)
-        self.setup_storage_interfaces()
+        self.setup_jetcobot_interfaces()
         self.setup_arm_interfaces()
         self.setup_manipulator_interfaces()
         print(f"GUI 노드 시작 (토픽 설정 완료)")
@@ -200,16 +214,39 @@ class GuiNode(QThread):
             self.move_role_pubs[robot_name] = self.node.create_publisher(
                 String, f"{robot_name}{T_SUFFIX_MOVE_ROLE}", 10
             )
-    
     # Storage interface
-
 
     # Arm interface
     # Jetcobot
-    def setup_storage_interfaces(self):
-        self.node.create_subscription(String, T_JETCO_REQ, self.callback_jetco_request, 10)
-        self.node.create_subscription(String, T_JETCO_UPD, self.callback_jetco_update, 10)
-        self.jetco_res_pub = self.node.create_publisher(String, T_JETCO_RES, 10)
+    def setup_jetcobot_interfaces(self):
+        # Status 구독
+        self.node.create_subscription(
+            String,
+            T_JETCO1_STATUS, 
+            lambda m, r=T_JETCO1_ID: self.state_callback(m,r), 
+            10
+        )
+        self.node.create_subscription(
+            String,
+            T_JETCO2_STATUS, 
+            lambda m, r=T_JETCO2_ID: self.state_callback(m,r), 
+            10
+        )
+        # Request 구독
+        self.node.create_subscription(StorageRequest, T_JETCO_REQ, self.callback_jetco_request, 10)
+        # Update 구독
+        self.node.create_subscription(SectionResult, T_JETCO_STR_UPD, self.callback_jetco_update, 10)
+        self.node.create_subscription(SectionResult, T_JETCO_ASS_UPD, self.callback_jetco_update, 10)
+        # Response 발행
+        self.jetco_res_pub = self.node.create_publisher(StorageResponse, T_JETCO_RES, 10)
+        # Mode 발행
+        self.jetco_mode_pub = self.node.create_publisher(Int32, T_JETCO1_SETMODE, 10)
+        # boot 발행
+        self.jetco_storage_boot_pub = self.node.create_publisher(Bool, T_JETCO1_STR_BOOT,10)
+        self.jetco_assembly_boot_pub = self.node.create_publisher(Bool, T_JETCO_ASS_BOOT,10)
+        # 수동 명령 발행
+        self.jetco_storage_manual_req_pub = self.node.create_publisher(ManualRequest,T_JETCO1_MANUAL_REQ,10)
+        self.jetco_assembly_stack_req_pub = self.node.create_publisher(Int32,T_JETCO2_STACK_REQ, 10)
 
     def setup_arm_interfaces(self):
         self.node.create_subscription(Int32, T_ARM_UNLOAD_SIGNAL, self.unload_callback, 10)
@@ -236,13 +273,9 @@ class GuiNode(QThread):
 
     # ★ [기능 1] Request 처리: DB 확인 후 Response 발행
     def callback_jetco_request(self, msg):
-        try:
-            # 작은따옴표를 큰따옴표로 바꿔서 JSON 호환되게 만듦
-            json_str = msg.data.replace("'", '"')
-            data = json.loads(json_str)
-            
-            target_section = data.get('section', '')
-            task = int(data.get('task_id', -1)) # 0: pick, 1: place
+        try:      
+            target_section = str(msg.section)
+            task = int(msg.task_id) # 0: pick, 1: place
             found_id = 0 # 0이면 실패 또는 없음
 
             self.jetco_log_signal.emit(f"📩 [요청] 구역:{target_section}, 작업:{'입고' if task==1 else '출고'}({task})")
@@ -250,25 +283,29 @@ class GuiNode(QThread):
             conn = mysql.connector.connect(host=DB_HOST, user=DB_USER, password=DB_PASS, database=DB_NAME)
             cursor = conn.cursor()
 
-            if task == 0: # Pick (출고): 물건이 있는(1) 자리 찾기
-                sql = "SELECT current_part_id FROM warehouse_slots WHERE section=%s AND is_occupied=1 LIMIT 1"
-                cursor.execute(sql, (target_section,))
-                res = cursor.fetchone()
-                if res and res[0]: 
-                    found_id = res[0] # 꺼낼 물건 ID
+            # if task == 0: # Pick (출고): 물건이 있는(1) 자리 찾기
+            #     sql = "SELECT current_part_id FROM warehouse_slots WHERE section=%s AND is_occupied=1 LIMIT 1"
+            #     cursor.execute(sql, (target_section,))
+            #     res = cursor.fetchone()
+            #     if res and res[0]: 
+            #         found_id = res[0] # 꺼낼 물건 ID
 
-            elif task == 1: # Place (입고): 빈(0) 자리 찾기
-                sql = "SELECT COUNT(*) FROM warehouse_slots WHERE section=%s AND is_occupied=0"
+            if task == 1: # Place (입고): 빈(0) 자리 찾기
+                sql = "SELECT slot_id FROM warehouse_slots WHERE section=%s AND is_occupied=0"
                 cursor.execute(sql, (target_section,))
                 cnt = cursor.fetchone()[0]
                 # 빈 자리가 있으면 성공 신호로 999 (또는 실제 넣을 ID) 리턴
-                found_id = 999 if cnt > 0 else 0
-
             conn.close()
 
-            # Response 전송 (JSON 문자열)
-            res_data = {"section": target_section, "id": found_id}
-            self.jetco_res_pub.publish(String(data=json.dumps(res_data)))
+            # Response 전송
+            result_msg = StorageResponse()
+            result_msg.section = target_section
+            if cnt is None:
+                result_msg.id = None
+            else:
+                result_msg.id = int(cnt[2])
+            res_data = {"section": target_section, "id": str(cnt[2])}
+            self.jetco_res_pub.publish(result_msg)
             self.jetco_log_signal.emit(f"[응답] {res_data}")
 
         except Exception as e:
@@ -278,12 +315,12 @@ class GuiNode(QThread):
     # ★ [기능 2] Update 처리: DB 상태 실제 변경
     def callback_jetco_update(self, msg):
         try:
-            json_str = msg.data.replace("'", '"')
-            data = json.loads(json_str)
-            
-            sec = data.get('section', '')
-            pid = int(data.get('id', 0))
-            occ = int(data.get('occupy', 0)) # 0: 비움, 1: 채움
+
+            sec = str(msg.section)
+            pid = int(msg.id)
+            occ = int(msg.occupy) # 0: 비움, 1: 채움
+
+            slot_id = sec+"-"+str(pid) # A-1 꼴로 변경
             
             action_str = "채움" if occ == 1 else "비움"
             self.jetco_log_signal.emit(f"🔄 [DB수정] {sec}구역, ID:{pid} -> {action_str}")
@@ -293,14 +330,14 @@ class GuiNode(QThread):
 
             if occ == 1: # 채우기 (Place 완료)
                 # 빈 슬롯 하나를 해당 ID로 채움
-                sql = """UPDATE warehouse_slots SET is_occupied=1, current_part_id=%s 
-                         WHERE section=%s AND is_occupied=0 LIMIT 1"""
-                cursor.execute(sql, (pid, sec))
+                sql = """UPDATE warehouse_slots SET is_occupied=1
+                         WHERE slot_id=%s AND is_occupied=0 LIMIT 1"""
+                cursor.execute(sql, (slot_id,))
             else: # 비우기 (Pick 완료)
-                # 해당 ID가 있던 슬롯을 비움
-                sql = """UPDATE warehouse_slots SET is_occupied=0, current_part_id=NULL 
-                         WHERE section=%s AND current_part_id=%s LIMIT 1"""
-                cursor.execute(sql, (sec, pid))
+                # 빈 슬롯 하나를 해당 ID로 비움
+                sql = """UPDATE warehouse_slots SET is_occupied=0
+                         WHERE slot_id=%s AND is_occupied=1 LIMIT 1"""
+                cursor.execute(sql, (slot_id,))
             
             conn.commit()
             conn.close()
@@ -413,6 +450,46 @@ class GuiNode(QThread):
     # GUI → Mobile 제어
     ############################################################################
 
+    #JetCobot
+    def send_storage_manip_start(self):
+        msg = Bool()
+        msg.data = True
+        self.jetco_storage_boot_pub.publish(msg)
+
+    def send_assembly_manip_start(self):
+        msg = Bool()
+        msg.data = True
+        self.jetco_assembly_boot_pub.publish(msg)
+
+    def send_storage_manip_stop(self):
+        msg = Bool()
+        msg.data = False
+        self.jetco_storage_boot_pub.publish(msg)
+
+    def send_storage_auto_pub(self):
+        msg = Int32()
+        msg.data = 0
+        self.jetco_mode_pub.publish(msg)
+
+    def send_storage_manual_pub(self):
+        msg = Int32()
+        msg.data = 1
+        self.jetco_mode_pub.publish(msg)
+
+    def send_storage_manual_request_place(self, part_id, section, section_id):
+        msg = ManualRequest()
+        msg.task_id = 1
+        msg.part_id = part_id
+        msg.section = section
+        msg.section_id = section_id
+        self.jetco_storage_manual_req_pub.publish(msg)
+
+    def send_assembly_assembly_stack_request_pub(self, module):
+        msg = Int32()
+        msg.data = module
+        self.jetco_assembly_stack_req_pub.publish(msg)
+
+    #Open Manipulator
     def send_arm_target(self, slot_id):
         if self.arm_pub:
             msg = String(); msg.data = slot_id
@@ -433,9 +510,6 @@ class GuiNode(QThread):
                 "mode": "작업중"
             }
             self.robot_update_signal.emit(data)
-
-
-
 
     def unload_callback(self, msg):
         self.unload_signal.emit(msg.data)

@@ -364,6 +364,10 @@ class RobotControlSystem(QWidget):
         
         # Jetcobot 로그 연결 - 추가
         self.ros_thread.jetco_log_signal.connect(self.add_log)
+        # Jetcobot 클래스 변수
+        self.part_id = None
+        self.section = None
+        self.section_id = None
         
         self.ros_thread.start()
         ######################################################################
@@ -696,14 +700,16 @@ class RobotControlSystem(QWidget):
         self.lbl_slot_title = QLabel("slot_id :")
         self.style_info_label(self.lbl_slot_title)
 
-        self.lbl_slot_value = QLabel("-")
+        self.lbl_slot_value = QLineEdit(self)
         self.style_info_label(self.lbl_slot_value)
+        self.lbl_slot_value.editingFinished.connect(self.on_slot_value_edited)
 
         self.lbl_part_title = QLabel("part_id :")
         self.style_info_label(self.lbl_part_title)
 
-        self.lbl_part_value = QLabel("-")
+        self.lbl_part_value = QLineEdit(self)
         self.style_info_label(self.lbl_part_value)
+        self.lbl_part_value.editingFinished.connect(self.on_part_value_edited)
 
         right_status_layout.addWidget(self.lbl_slot_title)
         right_status_layout.addSpacing(10)
@@ -755,7 +761,17 @@ class RobotControlSystem(QWidget):
             btn.clicked.connect(lambda _, m=f"모듈{i}": self.select_module(m))
             self.assembly_box.add_widget(btn)
 
+        # storage 전용 토글
+        self.manual_request_box = CollapsibleBox("Request 선택")
+        self.btn_jetco_manual_pick = QPushButton(f"Pick")
+        self.btn_jetco_manual_place = QPushButton(f"Place")
+        self.manual_request_box.add_widget(self.btn_jetco_manual_pick)
+        self.manual_request_box.add_widget(self.btn_jetco_manual_place)
+        # self.btn_jetco_manual_pick.clicked.connect(self.on_jetco_manual_pick_clicked)
+        self.btn_jetco_manual_place.clicked.connect(self.on_jetco_manual_place_clicked)
+
         right_layout.addWidget(self.assembly_box)
+        right_layout.addWidget(self.manual_request_box)
 
         right_layout.addStretch()
 
@@ -783,13 +799,14 @@ class RobotControlSystem(QWidget):
             QMessageBox.warning(self, "오류", "로봇을 먼저 선택하세요")
             return
 
-        if self.current_viewing_robot == "jetcobot1":   # storage
-            self.add_log("Storage Jetcobot → PNP START")
-            # self.ros_thread.send_storage_pnp()
-
+        if self.current_viewing_robot == "jetcobot1": # storage
+            self.ros_thread.send_storage_manip_start()
+            self.add_log("[jetcobot1] /jetcobot/storage/boot True publish")
+            return
         elif self.current_viewing_robot == "jetcobot2": # assembly
-            self.add_log("Assembly Jetcobot → PNP START")
-            # self.ros_thread.send_assembly_pnp()
+            self.ros_thread.send_assembly_manip_start()
+            self.add_log("[jetcobot] /jetcobot/storage/boot True publish")
+            return
 
         elif self.current_viewing_robot == "jetcobot3": # openmanipulator
             self.add_log("OpenManipulator → PNP START")
@@ -806,9 +823,10 @@ class RobotControlSystem(QWidget):
             QMessageBox.warning(self, "오류", "로봇을 먼저 선택하세요")
             return
 
-        if self.current_viewing_robot == "jetcobot1":   # storage
-            self.add_log("Storage Jetcobot → PNP START")
-            # self.ros_thread.send_storage_pnp()
+        if self.current_viewing_robot == "jetcobot1": # storage
+            self.ros_thread.send_storage_manip_stop()
+            self.add_log("[jetcobot1] /jetcobot/storage/boot False publish")
+            return
 
         elif self.current_viewing_robot == "jetcobot2": # assembly
             self.add_log("Assembly Jetcobot → PNP START")
@@ -829,13 +847,15 @@ class RobotControlSystem(QWidget):
             QMessageBox.warning(self, "오류", "로봇을 먼저 선택하세요")
             return
 
-        if self.current_viewing_robot == "jetcobot1":   # storage
-            self.add_log("Storage Jetcobot → PNP START")
-            # self.ros_thread.
-
+        if self.current_viewing_robot == "jetcobot1": # storage
+            self.ros_thread.send_storage_auto_pub()
+            self.add_log("[jetcobot1] /jetcobot/storage/set_mode publish: Auto Mode")
+            return
+        
         elif self.current_viewing_robot == "jetcobot2": # assembly
-            self.add_log("Assembly Jetcobot → PNP START")
-            self.handle_send()
+            self.ros_thread.send_assembly_assembly_stack_request_pub(int(self.selected_module[2]))
+            self.add_log("[jetcobot2] /jetcobot/assembly/stack/request publish")
+            return
 
         elif self.current_viewing_robot == "jetcobot3": # openmanipulator
             self.add_log("OpenManipulator → PNP START")
@@ -852,9 +872,10 @@ class RobotControlSystem(QWidget):
             QMessageBox.warning(self, "오류", "로봇을 먼저 선택하세요")
             return
 
-        if self.current_viewing_robot == "jetcobot1":   # storage
-            self.add_log("Storage Jetcobot → PNP START")
-            # self.ros_thread.
+        if self.current_viewing_robot == "jetcobot1": # storage
+            self.ros_thread.send_storage_manual_pub()
+            self.add_log("[jetcobot1] /jetcobot/storage/set_mode publish: Manual Mode")
+            return
 
         elif self.current_viewing_robot == "jetcobot2": # assembly
             self.add_log("Assembly Jetcobot → PNP START")
@@ -866,6 +887,25 @@ class RobotControlSystem(QWidget):
 
         else:
             QMessageBox.warning(self, "오류", "지원되지 않는 로봇")
+
+    # 🔷 storage 수동 명령 토글
+    def on_jetco_manual_place_clicked(self):
+        if self.current_viewing_robot == "jetcobot1":
+            # 실제 publish는 ros_thread에게 위임``
+            self.ros_thread.send_storage_manual_request_place(self.part_id, self.section, self.section_id)
+            #초기화
+            self.part_id = None
+            self.section = None
+            self.section_id = None
+            self.add_log("[jetcobot1] /jetcobot/storage/set_mode publish: Manual Mode")
+            return
+        
+    def on_part_value_edited(self):
+        self.part_id = int(self.lbl_part_value.text())
+
+    def on_slot_value_edited(self): # 입력 데이터는 A-1 꼴로 고정
+        self.section = str(self.lbl_slot_value.text()[0])
+        self.section_id = int(self.lbl_slot_value.text()[2])
 
     def setup_log_tab(self):
         layout = QVBoxLayout()
@@ -1000,6 +1040,7 @@ class RobotControlSystem(QWidget):
                 self.lbl_part_value.show()
 
                 self.assembly_box.hide()
+                self.manual_request_box.show()
 
             elif robot_id == "jetcobot2":  # assembly
                 self.btn_jetco_action1.setText("send")
@@ -1011,6 +1052,7 @@ class RobotControlSystem(QWidget):
                 self.lbl_part_value.hide()
 
                 self.assembly_box.show()
+                self.manual_request_box.hide()
 
             elif robot_id == "jetcobot3":
                 self.btn_jetco_action1.setText("test_btn1")
@@ -1022,6 +1064,7 @@ class RobotControlSystem(QWidget):
                 self.lbl_part_value.hide()
 
                 self.assembly_box.hide()
+                self.manual_request_box.hide()
 
         is_pinky = "pinky" in self.current_viewing_robot
         self.btn_load_complete.setVisible(is_pinky); self.btn_unload_complete.setVisible(is_pinky)
@@ -1038,8 +1081,9 @@ class RobotControlSystem(QWidget):
 
     # assembly 전용 토글
     def select_module(self, module_name):
-        self.selected_module = module_name
-        self.assembly_box.set_selected(module_name)
+        if self.current_viewing_robot == "jetcobot2":
+            self.selected_module = module_name
+            self.assembly_box.set_selected(module_name)
 
     # log
     def add_log(self, message):
