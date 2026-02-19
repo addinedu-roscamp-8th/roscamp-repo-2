@@ -849,6 +849,10 @@ class RobotControlSystem(QWidget):
 
         if self.current_viewing_robot == "jetcobot1": # storage
             self.ros_thread.send_storage_auto_pub()
+            if "jetcobot1" not in self.robot_data_storage:
+                self.robot_data_storage["jetcobot1"] = {"id": "jetcobot1"}
+            self.robot_data_storage["jetcobot1"]["mode"] = "AUTO"
+            self.lbl_jetco_mode_vale.setText("AUTO")
             self.add_log("[jetcobot1] /jetcobot/storage/set_mode publish: Auto Mode")
             return
         
@@ -874,6 +878,10 @@ class RobotControlSystem(QWidget):
 
         if self.current_viewing_robot == "jetcobot1": # storage
             self.ros_thread.send_storage_manual_pub()
+            if "jetcobot1" not in self.robot_data_storage:
+                self.robot_data_storage["jetcobot1"] = {"id": "jetcobot1"}
+            self.robot_data_storage["jetcobot1"]["mode"] = "MANUAL"
+            self.lbl_jetco_mode_vale.setText("MANUAL")
             self.add_log("[jetcobot1] /jetcobot/storage/set_mode publish: Manual Mode")
             return
 
@@ -891,6 +899,9 @@ class RobotControlSystem(QWidget):
     # 🔷 storage 수동 명령 토글
     def on_jetco_manual_place_clicked(self):
         if self.current_viewing_robot == "jetcobot1":
+            if self.part_id is None or self.section is None or self.section_id is None:
+                QMessageBox.warning(self, "입력 오류", "part_id와 slot_id(A-1)를 올바르게 입력하세요.")
+                return
             # 실제 publish는 ros_thread에게 위임``
             self.ros_thread.send_storage_manual_request_place(self.part_id, self.section, self.section_id)
             #초기화
@@ -901,11 +912,40 @@ class RobotControlSystem(QWidget):
             return
         
     def on_part_value_edited(self):
-        self.part_id = int(self.lbl_part_value.text())
+        text = self.lbl_part_value.text().strip()
+        if not text:
+            self.part_id = None
+            return
+
+        try:
+            self.part_id = int(text)
+        except ValueError:
+            self.part_id = None
+            self.add_log("[입력오류] part_id는 숫자여야 합니다.")
 
     def on_slot_value_edited(self): # 입력 데이터는 A-1 꼴로 고정
-        self.section = str(self.lbl_slot_value.text()[0])
-        self.section_id = int(self.lbl_slot_value.text()[2])
+        text = self.lbl_slot_value.text().strip().upper()
+        if not text:
+            self.section = None
+            self.section_id = None
+            return
+
+        parts = text.split("-", 1)
+        if len(parts) != 2:
+            self.section = None
+            self.section_id = None
+            self.add_log("[입력오류] slot_id 형식은 A-1 입니다.")
+            return
+
+        section, section_id_text = parts[0], parts[1]
+        if len(section) != 1 or not section.isalpha() or not section_id_text.isdigit():
+            self.section = None
+            self.section_id = None
+            self.add_log("[입력오류] slot_id 형식은 A-1 입니다.")
+            return
+
+        self.section = section
+        self.section_id = int(section_id_text)
 
     def setup_log_tab(self):
         layout = QVBoxLayout()
@@ -1031,8 +1071,11 @@ class RobotControlSystem(QWidget):
             self.jetcobot_shared_panel.show()
 
             if robot_id == "jetcobot1":  # storage
-                self.btn_jetco_action1.setText("Auto_Mode")
-                self.btn_jetco_action2.setText("Manual_Mode")
+                self.btn_jetco_common1.setText("Start")
+                self.btn_jetco_common2.setText("Shutdown")
+                self.btn_jetco_action1.setText("Auto")
+                self.btn_jetco_action2.setText("Manual")
+                self.btn_jetco_action2.show()
 
                 self.lbl_slot_title.show()
                 self.lbl_slot_value.show()
@@ -1043,8 +1086,14 @@ class RobotControlSystem(QWidget):
                 self.manual_request_box.show()
 
             elif robot_id == "jetcobot2":  # assembly
-                self.btn_jetco_action1.setText("send")
-                self.btn_jetco_action2.setText("test_btn1")
+                self.btn_jetco_common1.setText("Start")
+                self.btn_jetco_common2.setText("Shutdown")
+                self.btn_jetco_action1.setText("Send")
+                self.btn_jetco_action2.hide()
+                self.lbl_jetco_mode_vale.setText("MANUAL")
+                if "jetcobot2" not in self.robot_data_storage:
+                    self.robot_data_storage["jetcobot2"] = {"id": "jetcobot2"}
+                self.robot_data_storage["jetcobot2"]["mode"] = "MANUAL"
 
                 self.lbl_slot_title.hide()
                 self.lbl_slot_value.hide()
@@ -1055,8 +1104,11 @@ class RobotControlSystem(QWidget):
                 self.manual_request_box.hide()
 
             elif robot_id == "jetcobot3":
+                self.btn_jetco_common1.setText("pnp start")
+                self.btn_jetco_common2.setText("test_btn")
                 self.btn_jetco_action1.setText("test_btn1")
                 self.btn_jetco_action2.setText("test_btn2")
+                self.btn_jetco_action2.show()
 
                 self.lbl_slot_title.hide()
                 self.lbl_slot_value.hide()
@@ -1078,6 +1130,8 @@ class RobotControlSystem(QWidget):
             display_name = self.robot_name_map.get(self.current_viewing_robot, self.current_viewing_robot.upper())
             self.lbl_name.setText(display_name)
             self.lbl_bat.setText("-"); self.lbl_state.setText("-"); self.lbl_loc.setText("-")
+            self.lbl_jetco_status_value.setText("-"); self.lbl_jetco_mode_vale.setText("-") ##
+            self.lbl_slot_value.setText(""); self.lbl_part_value.setText("") ##
 
     # assembly 전용 토글
     def select_module(self, module_name):
@@ -1353,13 +1407,18 @@ class RobotControlSystem(QWidget):
         display_name = self.robot_name_map.get(rid, rid.upper() if rid else "Unknown")
         
         self.lbl_name.setText(display_name)
+        self.lbl_bat.setText("-"); self.lbl_state.setText("-"); self.lbl_loc.setText("-") ##
+        self.lbl_jetco_status_value.setText("-"); self.lbl_jetco_mode_vale.setText("-") ##
         if "battery" in data: self.lbl_bat.setText(f"{data['battery']:.2f}%")
         if "state" in data: self.lbl_state.setText(data['state'])
         if "location" in data: self.lbl_loc.setText(data['location'])
         if "status" in data: self.lbl_jetco_status_value.setText(data["status"])
         if "mode" in data: self.lbl_jetco_mode_vale.setText(data["mode"])
-        if "slot_id" in data: self.lbl_slot_value.setText(data["slot"])
-        if "part_id" in data: self.lbl_part_value.setText(data["part"])
+        if rid == "jetcobot2": self.lbl_jetco_mode_vale.setText("MANUAL")
+        if "slot_id" in data: self.lbl_slot_value.setText(str(data["slot_id"]))
+        elif "slot" in data: self.lbl_slot_value.setText(str(data["slot"]))
+        if "part_id" in data: self.lbl_part_value.setText(str(data["part_id"]))
+        elif "part" in data: self.lbl_part_value.setText(str(data["part"]))
 
     def on_load_complete(self): 
         if self.current_viewing_robot:
@@ -1387,3 +1446,50 @@ class RobotControlSystem(QWidget):
     def on_slot_allocated(self, slot_id):
         self.add_log(f"📍 빈 슬롯 찾음: {slot_id} -> 로봇팔 전송")
         self.ros_thread.send_arm_target(slot_id)
+
+    #작업 시작 버튼 처리 함수
+    def on_start_random_assignment(self): #지니
+        assignments = self.ros_thread.assign_random_work_and_move()
+        if not assignments:
+            QMessageBox.warning(self, "오류", "업무 할당에 실패했습니다. ROS 연결 상태를 확인하세요.")
+            return
+        self.refresh_assignment_ui()
+        QMessageBox.information(self, "업무 시작", "업무 할당 완료")
+
+    # 작업 종료 버튼 처리 함수
+    def on_stop_all_assignments(self): #지니
+        move_role_keys = sorted(self.ros_thread.move_role_pubs.keys())
+        if not move_role_keys:
+            QMessageBox.warning(self, "오류", "로봇 퍼블리셔가 준비되지 않았습니다.")
+            return
+
+        for robot_key in move_role_keys:
+            robot_id = robot_key.lstrip("/")
+            self.ros_thread.send_move_role(robot_id, "0")
+
+        self.refresh_assignment_ui()
+        QMessageBox.information(self, "작업종료", "전체 로봇을 대기로 변경했습니다.")
+
+    #지니 : 메인컨트롤 상하차 버튼 관련
+    def send_done_by_role(self, role_id, done_type):
+        assignments = self.ros_thread.robot_role_assignments
+        target_robot = None
+        for robot_id, assigned_role in assignments.items():
+            if str(assigned_role) == str(role_id):
+                target_robot = robot_id
+                break
+
+        if not target_robot:
+            QMessageBox.warning(self, "오류", f"업무 {role_id}에 배정된 로봇이 없습니다.")
+            return
+
+        if done_type == "load":
+            self.ros_thread.send_load_done(target_robot)
+            self.add_log(f"[메인컨트롤] 업무 {role_id} -> {target_robot} /load_done True")
+            QMessageBox.information(self, "명령", f"{target_robot} 상차 완료 전송")
+        elif done_type == "unload":
+            self.ros_thread.send_unload_done(target_robot)
+            self.add_log(f"[메인컨트롤] 업무 {role_id} -> {target_robot} /unload_done True")
+            QMessageBox.information(self, "명령", f"{target_robot} 하차 완료 전송")
+        else:
+            QMessageBox.warning(self, "오류", f"지원하지 않는 완료 타입: {done_type}")

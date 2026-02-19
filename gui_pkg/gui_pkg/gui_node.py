@@ -223,13 +223,13 @@ class GuiNode(QThread):
         self.node.create_subscription(
             String,
             T_JETCO1_STATUS, 
-            lambda m, r=T_JETCO1_ID: self.state_callback(m,r), 
+            lambda m, r=T_JETCO1_ID: self.jetco_state_callback(m, r), 
             10
         )
         self.node.create_subscription(
             String,
             T_JETCO2_STATUS, 
-            lambda m, r=T_JETCO2_ID: self.state_callback(m,r), 
+            lambda m, r=T_JETCO2_ID: self.jetco_state_callback(m, r), 
             10
         )
         # Request 구독
@@ -366,6 +366,11 @@ class GuiNode(QThread):
     def state_callback(self, msg, robot_id):
         clean_id = robot_id.replace("/", "")
         data = {"id": clean_id, "state": msg.data}
+        self.robot_update_signal.emit(data)
+
+    def jetco_state_callback(self, msg, robot_id): # jetcobot state update 분리
+        clean_id = robot_id.replace("/", "")
+        data = {"id": clean_id, "status": msg.data}
         self.robot_update_signal.emit(data)
 
     ############################################################################
