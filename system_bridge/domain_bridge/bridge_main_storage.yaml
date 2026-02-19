@@ -17,5 +17,5 @@ topics:
   /jetcobot/storage/auto/response:
     type: smartfactory_interfaces/msg/StorageResponse
 
-  /jetcobot/assembly/start:
-    type: std_msgs/msg/Bool
+  /jetcobot/storage/set_mode:
+    type: std_msgs/msg/Int32

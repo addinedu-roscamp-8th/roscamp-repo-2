@@ -5,7 +5,6 @@ to_domain: 33
 
 topics:
   /jetcobot/assembly/boot:
-
     type: std_msgs/msg/Bool
 
   /jetcobot/assembly/stack/request:

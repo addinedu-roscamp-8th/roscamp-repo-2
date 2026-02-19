@@ -1,7 +1,7 @@
 # bridge_for_jetcobot_storage_assembly
-name: storage_to_assembly
-from_domain: 32
-to_domain: 33
+name: assembly_to_storage
+from_domain: 33
+to_domain: 32
 
 topics:
   /jetcobot/assembly/start:

@@ -9,10 +9,7 @@ topics:
 
   /jetcobot/assembly/stack/response:
     type: std_msgs/msg/Bool
-
-  /jetcobot/storage/status:
-    type: std_msgs/msg/String
-
+    
   /jetcobot/pick_and_place/done:
     type: std_msgs/msg/Bool
 
