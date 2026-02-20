@@ -1,6 +1,7 @@
 import os
 import time
 import datetime
+import contextlib
 import cv2
 import cv2.aruco as aruco
 import mysql.connector
@@ -34,75 +35,87 @@ REAL_MAP_HEIGHT_CM = 83
 PART_MAPPING = { 1: 'A', 2: 'B', 3: 'A' }
 
 ##############################################################################
-# Database System
-# DB initialization / CRUD
+# Database System Helper
 ##############################################################################
+@contextlib.contextmanager
+def get_db_connection():
+    """안전한 DB 연결 관리를 위한 컨텍스트 매니저"""
+    conn = None
+    try:
+        conn = mysql.connector.connect(host=DB_HOST, user=DB_USER, password=DB_PASS)
+        if DB_NAME:
+            conn.database = DB_NAME
+        yield conn
+    except mysql.connector.Error as err:
+        print(f"❌ [DB Error] {err}")
+    finally:
+        if conn and conn.is_connected():
+            conn.close()
+
 def initialize_database():
     """DB 테이블 및 기초 데이터 자동 생성 함수"""
     try:
-        conn = mysql.connector.connect(host=DB_HOST, user=DB_USER, password=DB_PASS)
-        cursor = conn.cursor()
-        cursor.execute(f"CREATE DATABASE IF NOT EXISTS {DB_NAME}")
-        conn.database = DB_NAME
-        
-        tables = [
-            """CREATE TABLE IF NOT EXISTS request_list (
-                aruco_id INT PRIMARY KEY, name VARCHAR(100), 
-                target_qty INT DEFAULT 0, current_qty INT DEFAULT 0)""",
+        with get_db_connection() as conn:
+            if not conn: return
+            cursor = conn.cursor()
+            cursor.execute(f"CREATE DATABASE IF NOT EXISTS {DB_NAME}")
+            conn.database = DB_NAME
             
-            """CREATE TABLE IF NOT EXISTS inventory_history (
-                id INT AUTO_INCREMENT PRIMARY KEY, part_id INT, quantity INT, 
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
+            tables = [
+                """CREATE TABLE IF NOT EXISTS request_list (
+                    aruco_id INT PRIMARY KEY, name VARCHAR(100), 
+                    target_qty INT DEFAULT 0, current_qty INT DEFAULT 0)""",
+                
+                """CREATE TABLE IF NOT EXISTS inventory_history (
+                    id INT AUTO_INCREMENT PRIMARY KEY, part_id INT, quantity INT, 
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
+                
+                """CREATE TABLE IF NOT EXISTS warehouse_slots (
+                    slot_id VARCHAR(10) PRIMARY KEY, section CHAR(1), 
+                    is_occupied TINYINT DEFAULT 0, current_part_id INT DEFAULT NULL)""",
+                
+                """CREATE TABLE IF NOT EXISTS quotes (
+                    quote_id INT AUTO_INCREMENT PRIMARY KEY, project_name VARCHAR(255), 
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
+                
+                """CREATE TABLE IF NOT EXISTS parts (
+                    part_id INT PRIMARY KEY, part_name VARCHAR(100))""",
+                
+                """CREATE TABLE IF NOT EXISTS quote_details (
+                    id INT AUTO_INCREMENT PRIMARY KEY, quote_id INT, part_id INT, req_quantity INT,
+                    FOREIGN KEY (quote_id) REFERENCES quotes(quote_id),
+                    FOREIGN KEY (part_id) REFERENCES parts(part_id))"""
+            ]
             
-            """CREATE TABLE IF NOT EXISTS warehouse_slots (
-                slot_id VARCHAR(10) PRIMARY KEY, section CHAR(1), 
-                is_occupied TINYINT DEFAULT 0, current_part_id INT DEFAULT NULL)""",
+            for table_sql in tables:
+                cursor.execute(table_sql)
+                
+            # A, B, C 구역의 1~3번 슬롯이 있는지 확인하고 없으면 넣음
+            slots = []
+            for section in ['A', 'B', 'C']:
+                for i in range(1, 4): # 1, 2, 3
+                    slots.append((f'{section}-{i}', section))
             
-            """CREATE TABLE IF NOT EXISTS quotes (
-                quote_id INT AUTO_INCREMENT PRIMARY KEY, project_name VARCHAR(255), 
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
             
-            """CREATE TABLE IF NOT EXISTS parts (
-                part_id INT PRIMARY KEY, part_name VARCHAR(100))""",
-            
-            """CREATE TABLE IF NOT EXISTS quote_details (
-                id INT AUTO_INCREMENT PRIMARY KEY, quote_id INT, part_id INT, req_quantity INT,
-                FOREIGN KEY (quote_id) REFERENCES quotes(quote_id),
-                FOREIGN KEY (part_id) REFERENCES parts(part_id))"""
-        ]
-        
-        for table_sql in tables:
-            cursor.execute(table_sql)
-            
-        # A, B, C 구역의 1~3번 슬롯이 있는지 확인하고 없으면 넣음
-        slots = []
-        for section in ['A', 'B', 'C']:
-            for i in range(1, 4): # 1, 2, 3
-                slots.append((f'{section}-{i}', section))
-        
-        # 나머지 구역도 혹시 모르니 일단 둠 (D~F)
-        slots.extend([('D-1', 'D'), ('E-1', 'E'), ('F-1', 'F')])
-        
-        cursor.executemany("""
-            INSERT IGNORE INTO warehouse_slots (slot_id, section, is_occupied) 
-            VALUES (%s, %s, 0)
-        """, slots)
+            cursor.executemany("""
+                INSERT IGNORE INTO warehouse_slots (slot_id, section, is_occupied) 
+                VALUES (%s, %s, 0)
+            """, slots)
 
-        parts = [(1, 'Part A (Red)'), (2, 'Part B (Blue)'), (3, 'Part C (Green)')]
-        cursor.executemany("INSERT IGNORE INTO parts (part_id, part_name) VALUES (%s, %s)", parts)
-        
-        cursor.execute("SELECT COUNT(*) FROM quotes")
-        if cursor.fetchone()[0] == 0:
-            cursor.execute("INSERT INTO quotes (project_name) VALUES ('Test Project Alpha')")
-            quote_id = cursor.lastrowid
-            cursor.execute("INSERT INTO quote_details (quote_id, part_id, req_quantity) VALUES (%s, 1, 3)", (quote_id,))
-            cursor.execute("INSERT INTO quote_details (quote_id, part_id, req_quantity) VALUES (%s, 2, 2)", (quote_id,))
-            print("✅ [DB 자동설정] 기초 데이터(슬롯, 부품, 테스트 주문)가 생성되었습니다.")
-        
-        conn.commit()
-        conn.close()
-        print("✅ [DB 자동설정] 데이터베이스 초기화 완료")
-        
+            parts = [(1, 'Part A (Red)'), (2, 'Part B (Blue)'), (3, 'Part C (Green)')]
+            cursor.executemany("INSERT IGNORE INTO parts (part_id, part_name) VALUES (%s, %s)", parts)
+            
+            cursor.execute("SELECT COUNT(*) FROM quotes")
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("INSERT INTO quotes (project_name) VALUES ('Test Project Alpha')")
+                quote_id = cursor.lastrowid
+                cursor.execute("INSERT INTO quote_details (quote_id, part_id, req_quantity) VALUES (%s, 1, 3)", (quote_id,))
+                cursor.execute("INSERT INTO quote_details (quote_id, part_id, req_quantity) VALUES (%s, 2, 2)", (quote_id,))
+                print("✅ [DB 자동설정] 기초 데이터(슬롯, 부품, 테스트 주문)가 생성되었습니다.")
+            
+            conn.commit()
+            print("✅ [DB 자동설정] 데이터베이스 초기화 완료")
+            
     except Exception as e:
         print(f"⚠️ [DB 경고] 초기화 중 오류 발생 (무시 가능): {e}")
 
@@ -120,12 +133,10 @@ class CameraThread(QThread):
         self.running = True
 
     def run(self):
-        # aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
-        # parameters = aruco.DetectorParameters()
         
         url = "http://192.168.0.6:5000/video_feed" # 학원
         cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG) 
-        ############## test
+
         if not cap.isOpened():
             print("❌ IP 카메라 실패 → 로컬카메라 시도")
             cap = cv2.VideoCapture(2)
@@ -149,47 +160,7 @@ class CameraThread(QThread):
             )
 
         cap.release()
-        ##############
-        # present_ids = set()
-        # disappear_start_time = {} 
-        
-        # while self.running:
-        #     ret, frame = cap.read()
-        #     if not ret: break
-        #     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        #     corners, ids, _ = aruco.detectMarkers(gray, aruco_dict, parameters=parameters)
-        #     detected_now = set()
-        #     if ids is not None:
-        #         aruco.drawDetectedMarkers(frame, corners, ids)
-        #         for marker_id in ids:
-        #             id_num = int(marker_id[0])
-        #             detected_now.add(id_num)
-            
-        #     current_time = time.time()
-        #     for id_num in detected_now:
-        #         if id_num not in present_ids:
-        #             print(f"📷 물건 감지됨: ID {id_num}")
-        #             self.increase_quantity(id_num)
-        #             self.matchFound.emit(id_num)
-        #             allocated_slot = self.find_and_fill_empty_slot(id_num)
-        #             if allocated_slot:
-        #                 print(f"✅ 슬롯 배정 완료: {allocated_slot} -> 로봇 이동 명령 준비")
-        #                 self.slotAllocated.emit(allocated_slot)
-        #             else: print(f"⚠️ 경고: ID {id_num}을 넣을 빈 슬롯이 없습니다!")
-        #             present_ids.add(id_num)
-        #         if id_num in disappear_start_time: del disappear_start_time[id_num]
-            
-        #     missing_ids = present_ids - detected_now
-        #     for missing_id in missing_ids:
-        #         if missing_id not in disappear_start_time: disappear_start_time[missing_id] = current_time
-        #         elif (current_time - disappear_start_time[missing_id]) > 2.0:
-        #             present_ids.remove(missing_id); del disappear_start_time[missing_id]
-            
-        #     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        #     h, w, ch = rgb.shape
-        #     qimg = QImage(rgb.data, w, h, ch * w, QImage.Format.Format_RGB888)
-        #     self.changePixmap.emit(qimg.scaled(500, 350, Qt.AspectRatioMode.KeepAspectRatio))
-        # cap.release()
+
 
     def run_dummy_mode(self):
         import numpy as np
@@ -203,35 +174,37 @@ class CameraThread(QThread):
 
     def increase_quantity(self, aruco_id):
         try:
-            conn = mysql.connector.connect(host=DB_HOST, user=DB_USER, password=DB_PASS, database=DB_NAME)
-            cursor = conn.cursor()
-            sql = """INSERT INTO request_list (aruco_id, name, target_qty, current_qty) 
-                     VALUES (%s, 'Detected Item', 0, 1) 
-                     ON DUPLICATE KEY UPDATE current_qty = current_qty + 1"""
-            cursor.execute(sql, (aruco_id,))
-            cursor.execute("INSERT INTO inventory_history (part_id, quantity) VALUES (%s, 1)", (aruco_id,))
-            conn.commit(); conn.close()
-        except Exception: pass
+            with get_db_connection() as conn:
+                if not conn: return
+                cursor = conn.cursor()
+                sql = """INSERT INTO request_list (aruco_id, name, target_qty, current_qty) 
+                         VALUES (%s, 'Detected Item', 0, 1) 
+                         ON DUPLICATE KEY UPDATE current_qty = current_qty + 1"""
+                cursor.execute(sql, (aruco_id,))
+                cursor.execute("INSERT INTO inventory_history (part_id, quantity) VALUES (%s, 1)", (aruco_id,))
+                conn.commit()
+        except Exception as e: 
+            print(f"DB Error (increase_quantity): {e}")
 
     def find_and_fill_empty_slot(self, aruco_id):
         target_section = PART_MAPPING.get(aruco_id)
         if not target_section: return None
-        conn = None; found_slot = None
+        found_slot = None
         try:
-            conn = mysql.connector.connect(host=DB_HOST, user=DB_USER, password=DB_PASS, database=DB_NAME)
-            cursor = conn.cursor()
-            sql_sel = "SELECT slot_id FROM warehouse_slots WHERE section=%s AND is_occupied=0 ORDER BY slot_id ASC LIMIT 1"
-            cursor.execute(sql_sel, (target_section,))
-            res = cursor.fetchone()
-            if res:
-                found_slot = res[0]
-                sql_upd = "UPDATE warehouse_slots SET is_occupied=1, current_part_id=%s WHERE slot_id=%s"
-                cursor.execute(sql_upd, (aruco_id, found_slot))
-                conn.commit()
-                print(f"✅ 슬롯 할당: {found_slot}")
-        except Exception as e: print(f"DB Error: {e}")
-        finally: 
-            if conn: conn.close()
+            with get_db_connection() as conn:
+                if not conn: return None
+                cursor = conn.cursor()
+                sql_sel = "SELECT slot_id FROM warehouse_slots WHERE section=%s AND is_occupied=0 ORDER BY slot_id ASC LIMIT 1"
+                cursor.execute(sql_sel, (target_section,))
+                res = cursor.fetchone()
+                if res:
+                    found_slot = res[0]
+                    sql_upd = "UPDATE warehouse_slots SET is_occupied=1, current_part_id=%s WHERE slot_id=%s"
+                    cursor.execute(sql_upd, (aruco_id, found_slot))
+                    conn.commit()
+                    print(f"✅ 슬롯 할당: {found_slot}")
+        except Exception as e: 
+            print(f"DB Error (find_and_fill_empty_slot): {e}")
         return found_slot
 
     def stop(self):
@@ -1239,16 +1212,19 @@ class RobotControlSystem(QWidget):
     def handle_unload_event(self, aruco_id):
         self.add_log(f"출고 신호 수신: ID {aruco_id}")
         try:
-            conn = mysql.connector.connect(host=DB_HOST, user=DB_USER, password=DB_PASS, database=DB_NAME)
-            cursor = conn.cursor()
-            sql = "UPDATE request_list SET current_qty = GREATEST(current_qty - 1, 0) WHERE aruco_id = %s"
-            cursor.execute(sql, (aruco_id,))
-            sql_free = "UPDATE warehouse_slots SET is_occupied=0, current_part_id=NULL WHERE current_part_id=%s LIMIT 1"
-            cursor.execute(sql_free, (aruco_id,))
-            conn.commit(); conn.close()
+            with get_db_connection() as conn:
+                if not conn: return
+                cursor = conn.cursor()
+                sql = "UPDATE request_list SET current_qty = GREATEST(current_qty - 1, 0) WHERE aruco_id = %s"
+                cursor.execute(sql, (aruco_id,))
+                sql_free = "UPDATE warehouse_slots SET is_occupied=0, current_part_id=NULL WHERE current_part_id=%s LIMIT 1"
+                cursor.execute(sql_free, (aruco_id,))
+                conn.commit()
+            
             self.load_verification_table()
             self.add_log(f"출고 및 슬롯 해제 완료: ID {aruco_id}")
-        except Exception as e: print(f"DB Error: {e}")
+        except Exception as e: 
+            print(f"DB Error (handle_unload_event): {e}")
 
     def on_history_cell_clicked(self, row, col):
         item = self.history_table.item(row, 0)
@@ -1256,15 +1232,19 @@ class RobotControlSystem(QWidget):
 
     def load_filtered_verification_table(self, quote_id):
         try:
-            conn = mysql.connector.connect(host=DB_HOST, user=DB_USER, password=DB_PASS, database=DB_NAME)
-            cursor = conn.cursor()
-            cursor.execute("SELECT part_id FROM quote_details WHERE quote_id = %s", (quote_id,))
-            part_rows = cursor.fetchall()
-            if not part_rows: conn.close(); return
-            t_ids = [str(r[0]) for r in part_rows]
-            fmt = ','.join(['%s'] * len(t_ids))
-            sql = f"SELECT aruco_id, name, target_qty, current_qty FROM request_list WHERE aruco_id IN ({fmt})"
-            cursor.execute(sql, tuple(t_ids)); rows = cursor.fetchall(); conn.close()
+            with get_db_connection() as conn:
+                if not conn: return
+                cursor = conn.cursor()
+                cursor.execute("SELECT part_id FROM quote_details WHERE quote_id = %s", (quote_id,))
+                part_rows = cursor.fetchall()
+                if not part_rows: return
+                
+                t_ids = [str(r[0]) for r in part_rows]
+                fmt = ','.join(['%s'] * len(t_ids))
+                sql = f"SELECT aruco_id, name, target_qty, current_qty FROM request_list WHERE aruco_id IN ({fmt})"
+                cursor.execute(sql, tuple(t_ids))
+                rows = cursor.fetchall()
+                
             self.db_table.setRowCount(0)
             for i, (aid, name, tgt, cur) in enumerate(rows):
                 self.db_table.insertRow(i)
@@ -1274,13 +1254,17 @@ class RobotControlSystem(QWidget):
                 self.db_table.setItem(i,2,QTableWidgetItem(str(tgt)))
                 self.db_table.setItem(i,3,QTableWidgetItem(str(cur)))
                 self.db_table.setItem(i,4,QTableWidgetItem(status))
-        except Exception: pass
+        except Exception as e: 
+            print(f"DB Error (load_filtered_verification_table): {e}")
 
     def load_quote_history(self):
         try:
-            conn = mysql.connector.connect(host=DB_HOST, user=DB_USER, password=DB_PASS, database=DB_NAME)
-            cur = conn.cursor(); cur.execute("SELECT quote_id, project_name, created_at FROM quotes ORDER BY quote_id DESC")
-            rows = cur.fetchall(); conn.close()
+            with get_db_connection() as conn:
+                if not conn: return
+                cur = conn.cursor()
+                cur.execute("SELECT quote_id, project_name, created_at FROM quotes ORDER BY quote_id DESC")
+                rows = cur.fetchall()
+                
             self.history_table.setRowCount(0)
             for i, (qid, proj, date) in enumerate(rows):
                 self.history_table.insertRow(i)
@@ -1288,17 +1272,21 @@ class RobotControlSystem(QWidget):
                 self.history_table.setItem(i,0,QTableWidgetItem(str(qid)))
                 self.history_table.setItem(i,1,QTableWidgetItem(str(proj)))
                 self.history_table.setItem(i,2,QTableWidgetItem(ds))
-        except Exception: pass
+        except Exception as e: 
+            print(f"DB Error (load_quote_history): {e}")
 
     def on_search_clicked(self):
         pid = self.part_input.text().strip()
         if not pid: return
         try:
-            conn = mysql.connector.connect(host=DB_HOST, user=DB_USER, password=DB_PASS, database=DB_NAME)
-            cur = conn.cursor(); cur.execute("SELECT COALESCE(SUM(quantity), 0) FROM inventory_history WHERE part_id = %s", (pid,))
-            res = cur.fetchone()[0]; conn.close()
+            with get_db_connection() as conn:
+                if not conn: return
+                cur = conn.cursor()
+                cur.execute("SELECT COALESCE(SUM(quantity), 0) FROM inventory_history WHERE part_id = %s", (pid,))
+                res = cur.fetchone()[0]
             self.lbl_res.setText(f"결과: {res}개")
-        except: self.lbl_res.setText("결과: 에러")
+        except: 
+            self.lbl_res.setText("결과: 에러")
 
     def refresh_search_result(self, detected_id):
         cur = self.part_input.text().strip()
@@ -1306,81 +1294,104 @@ class RobotControlSystem(QWidget):
 
     def load_latest_order_from_db(self):
         try:
-            conn = mysql.connector.connect(host=DB_HOST, user=DB_USER, password=DB_PASS, database=DB_NAME)
-            cursor = conn.cursor(); cursor.execute("SELECT MAX(quote_id) FROM quotes")
-            row = cursor.fetchone()
-            if not row or row[0] is None: QMessageBox.warning(self, "없음", "주문 내역 없음"); conn.close(); return
-            lid = row[0]
-            sql = """SELECT qd.part_id, p.part_name, qd.req_quantity 
-                     FROM quote_details qd JOIN parts p ON qd.part_id = p.part_id WHERE qd.quote_id = %s"""
-            cursor.execute(sql, (lid,)); items = cursor.fetchall()
-            if not items: conn.close(); return
-            for pid, pname, qty in items:
-                cname = pname.split('(')[0].strip() if '(' in pname else pname
-                cursor.execute("SELECT aruco_id FROM request_list WHERE aruco_id = %s", (pid,))
-                if cursor.fetchone(): cursor.execute("UPDATE request_list SET target_qty = target_qty + %s WHERE aruco_id = %s", (qty, pid))
-                else: cursor.execute("INSERT INTO request_list (aruco_id, name, target_qty, current_qty) VALUES (%s, %s, %s, 0)", (pid, cname, qty))
-            conn.commit(); conn.close()
-            self.load_verification_table(); self.load_quote_history()
-            QMessageBox.information(self, "완료", f"주문 #{lid} 불러오기 성공"); self.add_log(f"주문 #{lid} 로드됨")
-        except Exception as e: print(f"DB Error: {e}")
+            with get_db_connection() as conn:
+                if not conn: return
+                cursor = conn.cursor()
+                cursor.execute("SELECT MAX(quote_id) FROM quotes")
+                row = cursor.fetchone()
+                
+                if not row or row[0] is None: 
+                    QMessageBox.warning(self, "없음", "주문 내역 없음")
+                    return
+                    
+                lid = row[0]
+                sql = """SELECT qd.part_id, p.part_name, qd.req_quantity 
+                         FROM quote_details qd JOIN parts p ON qd.part_id = p.part_id WHERE qd.quote_id = %s"""
+                cursor.execute(sql, (lid,))
+                items = cursor.fetchall()
+                
+                if not items: return
+                
+                for pid, pname, qty in items:
+                    cname = pname.split('(')[0].strip() if '(' in pname else pname
+                    cursor.execute("SELECT aruco_id FROM request_list WHERE aruco_id = %s", (pid,))
+                    if cursor.fetchone(): 
+                        cursor.execute("UPDATE request_list SET target_qty = target_qty + %s WHERE aruco_id = %s", (qty, pid))
+                    else: 
+                        cursor.execute("INSERT INTO request_list (aruco_id, name, target_qty, current_qty) VALUES (%s, %s, %s, 0)", (pid, cname, qty))
+                conn.commit()
+                
+            self.load_verification_table()
+            self.load_quote_history()
+            QMessageBox.information(self, "완료", f"주문 #{lid} 불러오기 성공")
+            self.add_log(f"주문 #{lid} 로드됨")
+        except Exception as e: 
+            print(f"DB Error (load_latest_order_from_db): {e}")
     
     def load_verification_table(self):
         try:
-            conn = mysql.connector.connect(host=DB_HOST, user=DB_USER, password=DB_PASS, database=DB_NAME)
-            cur = conn.cursor()
-            
-            # 1. request_list (검수 목록) 업데이트
-            cur.execute("SELECT aruco_id, name, target_qty, current_qty FROM request_list")
-            rows = cur.fetchall()
-            self.db_table.setRowCount(0)
-            for i, (aid, name, tgt, cur_qty) in enumerate(rows):
-                self.db_table.insertRow(i)
-                status = "✅ 완료" if cur_qty >= tgt and tgt > 0 else "⚠️ 진행중" if cur_qty > 0 else "대기"
-                self.db_table.setItem(i,0,QTableWidgetItem(str(aid)))
-                self.db_table.setItem(i,1,QTableWidgetItem(str(name)))
-                self.db_table.setItem(i,2,QTableWidgetItem(str(tgt)))
-                self.db_table.setItem(i,3,QTableWidgetItem(str(cur_qty)))
-                self.db_table.setItem(i,4,QTableWidgetItem(status))
-                col = QColor(200,255,200) if cur_qty >= tgt and tgt > 0 else QColor(255,255,224) if cur_qty > 0 else QColor(255,255,255)
-                for c in range(5): self.db_table.item(i,c).setBackground(col)
+            with get_db_connection() as conn:
+                if not conn: return
+                cur = conn.cursor()
+                
+                # 1. request_list (검수 목록) 업데이트
+                cur.execute("SELECT aruco_id, name, target_qty, current_qty FROM request_list")
+                rows = cur.fetchall()
+                self.db_table.setRowCount(0)
+                for i, (aid, name, tgt, cur_qty) in enumerate(rows):
+                    self.db_table.insertRow(i)
+                    status = "✅ 완료" if cur_qty >= tgt and tgt > 0 else "⚠️ 진행중" if cur_qty > 0 else "대기"
+                    self.db_table.setItem(i,0,QTableWidgetItem(str(aid)))
+                    self.db_table.setItem(i,1,QTableWidgetItem(str(name)))
+                    self.db_table.setItem(i,2,QTableWidgetItem(str(tgt)))
+                    self.db_table.setItem(i,3,QTableWidgetItem(str(cur_qty)))
+                    self.db_table.setItem(i,4,QTableWidgetItem(status))
+                    
+                    col = QColor(200,255,200) if cur_qty >= tgt and tgt > 0 else QColor(255,255,224) if cur_qty > 0 else QColor(255,255,255)
+                    for c in range(5): 
+                        self.db_table.item(i,c).setBackground(col)
 
-            # 2. warehouse_slots (창고 카드) 업데이트
-            # DB에서 슬롯 정보를 가져와서 카드에 반영 - 수정
-            # parts 테이블과 조인하여 부품 이름까지 가져옴
-            query = """
-                SELECT s.slot_id, s.is_occupied, s.current_part_id, p.part_name 
-                FROM warehouse_slots s 
-                LEFT JOIN parts p ON s.current_part_id = p.part_id
-            """
-            cur.execute(query)
-            slot_rows = cur.fetchall()
-            
-            for slot_id, occupied, part_id, part_name in slot_rows:
-                if slot_id in self.warehouse_cards:
-                    display_name = part_name if part_name else (str(part_id) if part_id else "-")
-                    self.warehouse_cards[slot_id].update_info(display_name, occupied)
-
-            conn.close()
+                # 2. warehouse_slots (창고 카드) 업데이트
+                query = """
+                    SELECT s.slot_id, s.is_occupied, s.current_part_id, p.part_name 
+                    FROM warehouse_slots s 
+                    LEFT JOIN parts p ON s.current_part_id = p.part_id
+                """
+                cur.execute(query)
+                slot_rows = cur.fetchall()
+                
+                for slot_id, occupied, part_id, part_name in slot_rows:
+                    if slot_id in self.warehouse_cards:
+                        display_name = part_name if part_name else (str(part_id) if part_id else "-")
+                        self.warehouse_cards[slot_id].update_info(display_name, occupied)
         except Exception as e: 
-            print(f"Update Error: {e}")
+            print(f"Update Error (load_verification_table): {e}")
+            
     ########################################################################
 
     def reset_db(self):
         if QMessageBox.question(self, '확인', '초기화?', QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
             try:
-                conn = mysql.connector.connect(host=DB_HOST, user=DB_USER, password=DB_PASS, database=DB_NAME)
-                cur = conn.cursor(); cur.execute("TRUNCATE TABLE request_list"); cur.execute("TRUNCATE TABLE inventory_history")
-                # 창고 슬롯도 초기화
-                cur.execute("UPDATE warehouse_slots SET is_occupied=0, current_part_id=NULL")
-                conn.commit(); conn.close()
-                self.load_verification_table(); self.load_quote_history()
-                QMessageBox.information(self, "완료", "초기화됨"); self.add_log("데이터 초기화됨")
-            except Exception: pass
+                with get_db_connection() as conn:
+                    if not conn: return
+                    cur = conn.cursor()
+                    cur.execute("TRUNCATE TABLE request_list")
+                    cur.execute("TRUNCATE TABLE inventory_history")
+                    cur.execute("UPDATE warehouse_slots SET is_occupied=0, current_part_id=NULL")
+                    conn.commit()
+                    
+                self.load_verification_table()
+                self.load_quote_history()
+                QMessageBox.information(self, "완료", "초기화됨")
+                self.add_log("데이터 초기화됨")
+            except Exception as e: 
+                print(f"DB Error (reset_db): {e}")
 
     def closeEvent(self, event):
-        self.ros_thread.stop()
-        self.camera_thread.stop()
+        if hasattr(self, 'ros_thread') and self.ros_thread:
+            self.ros_thread.stop()
+        if hasattr(self, 'camera_thread') and self.camera_thread:
+            self.camera_thread.stop()
         event.accept()
 
     ##############################################################################            
@@ -1449,15 +1460,25 @@ class RobotControlSystem(QWidget):
 
     #작업 시작 버튼 처리 함수
     def on_start_random_assignment(self): #지니
+        if not hasattr(self.ros_thread, 'assign_random_work_and_move'):
+            QMessageBox.warning(self, "오류", "ROS 스레드에 할당 기능이 구현되어 있지 않습니다.")
+            return
+            
         assignments = self.ros_thread.assign_random_work_and_move()
         if not assignments:
             QMessageBox.warning(self, "오류", "업무 할당에 실패했습니다. ROS 연결 상태를 확인하세요.")
             return
-        self.refresh_assignment_ui()
+            
+        if hasattr(self, 'refresh_assignment_ui'):
+            self.refresh_assignment_ui()
+            
         QMessageBox.information(self, "업무 시작", "업무 할당 완료")
 
     # 작업 종료 버튼 처리 함수
     def on_stop_all_assignments(self): #지니
+        if not hasattr(self.ros_thread, 'move_role_pubs'):
+            return
+            
         move_role_keys = sorted(self.ros_thread.move_role_pubs.keys())
         if not move_role_keys:
             QMessageBox.warning(self, "오류", "로봇 퍼블리셔가 준비되지 않았습니다.")
@@ -1467,11 +1488,16 @@ class RobotControlSystem(QWidget):
             robot_id = robot_key.lstrip("/")
             self.ros_thread.send_move_role(robot_id, "0")
 
-        self.refresh_assignment_ui()
+        if hasattr(self, 'refresh_assignment_ui'):
+            self.refresh_assignment_ui()
+            
         QMessageBox.information(self, "작업종료", "전체 로봇을 대기로 변경했습니다.")
 
     #지니 : 메인컨트롤 상하차 버튼 관련
-    def send_done_by_role(self, role_id, done_type):
+    def send_done_by_role(self, role_id, done_type): 
+        if not hasattr(self.ros_thread, 'robot_role_assignments'):
+            return
+            
         assignments = self.ros_thread.robot_role_assignments
         target_robot = None
         for robot_id, assigned_role in assignments.items():
