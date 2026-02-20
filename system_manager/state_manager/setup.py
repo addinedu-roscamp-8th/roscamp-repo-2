@@ -26,7 +26,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
-        'monitor_node = system_manager.monitor:main'
+        'state_machine = state_manager.state_machine:main',
+        'task_planner = state_manager.task_planner:main',
         ],
     },
 )

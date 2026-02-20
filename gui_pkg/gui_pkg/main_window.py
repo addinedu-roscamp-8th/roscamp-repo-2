@@ -1024,6 +1024,31 @@ class RobotControlSystem(QWidget):
                 
         else:
             QMessageBox.warning(self, "오류", "로봇을 먼저 선택해주세요.")
+          
+    def role_id_to_text(self, role_id): #지니
+        role_map = {
+            "0": "대기",
+            "1": "검수대",
+            "3": "조립대",
+            "4": "모듈 창고",
+        }
+        if role_id is None:
+            return "-"
+        return role_map.get(str(role_id), str(role_id))
+
+    def refresh_assignment_ui(self): #지니
+        assignments = self.ros_thread.robot_role_assignments
+        for rid, display_name in self.robot_name_map.items():
+            label = self.pinky_status_labels.get(rid)
+            if not label:
+                continue
+            role_text = self.role_id_to_text(assignments.get(rid))
+            label.setText(f"{display_name} : {role_text}")
+
+        if self.current_viewing_robot:
+            current_role = assignments.get(self.current_viewing_robot)
+            if current_role is not None:
+                self.lbl_state.setText(self.role_id_to_text(current_role))
 
     # pinky, Jetcobot toggle 분기
     def select_robot(self, robot_id):
