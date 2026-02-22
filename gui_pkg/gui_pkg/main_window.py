@@ -4,6 +4,7 @@ import datetime
 import contextlib
 import cv2
 import cv2.aruco as aruco
+import numpy as np
 import mysql.connector
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, 
                              QGroupBox, QPushButton, QLabel, QFrame, 
@@ -133,34 +134,64 @@ class CameraThread(QThread):
         self.running = True
 
     def run(self):
-        
-        url = "http://192.168.0.6:5000/video_feed" # 학원
-        cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG) 
 
-        if not cap.isOpened():
-            print("❌ IP 카메라 실패 → 로컬카메라 시도")
-            cap = cv2.VideoCapture(2)
+        cv2.utils.logging.setLogLevel(cv2.utils.logging.LOG_LEVEL_ERROR)
+        aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
+        parameters = aruco.DetectorParameters()
+        detector = cv2.aruco.ArucoDetector(aruco_dict, parameters)
+        
+        url = "http://192.168.0.105:5000/video_feed" # 학원
+        cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG) 
 
         if not cap.isOpened():
             print("❌ 카메라 없음 (더미 모드)")
             self.run_dummy_mode()
             return
 
+        present_ids = set()
+        disappear_start_time = {} 
+        
         while self.running:
             ret, frame = cap.read()
-            if not ret:
-                continue
+            if not ret: break
+            frame = np.ascontiguousarray(frame)
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            corners, ids, _ = detector.detectMarkers(gray)
 
+            detected_now = set()
+            if ids is not None:
+                aruco.drawDetectedMarkers(frame, corners, ids)
+                for marker_id in ids:
+                    id_num = int(marker_id[0])
+                    if id_num not in [1, 2, 3]: # 🔵 허용 ID만 통과 (1~3)
+                        continue
+                    detected_now.add(id_num)
+            
+            current_time = time.time()
+            for id_num in detected_now:
+                if id_num not in present_ids:
+                    print(f"📷 물건 감지됨: ID {id_num}")
+                    self.increase_quantity(id_num)
+                    self.matchFound.emit(id_num)
+                    # allocated_slot = self.find_and_fill_empty_slot(id_num)
+                    # if allocated_slot:
+                    #     print(f"✅ 슬롯 배정 완료: {allocated_slot} -> 로봇 이동 명령 준비")
+                    #     self.slotAllocated.emit(allocated_slot)
+                    # else: print(f"⚠️ 경고: ID {id_num}을 넣을 빈 슬롯이 없습니다!")
+                    present_ids.add(id_num)
+                if id_num in disappear_start_time: del disappear_start_time[id_num]
+            
+            missing_ids = present_ids - detected_now
+            for missing_id in missing_ids:
+                if missing_id not in disappear_start_time: disappear_start_time[missing_id] = current_time
+                elif (current_time - disappear_start_time[missing_id]) > 2.0:
+                    present_ids.remove(missing_id); del disappear_start_time[missing_id]
+            
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             h, w, ch = rgb.shape
             qimg = QImage(rgb.data, w, h, ch * w, QImage.Format.Format_RGB888)
-
-            self.changePixmap.emit(
-                qimg.scaled(500, 350, Qt.AspectRatioMode.KeepAspectRatio)
-            )
-
+            self.changePixmap.emit(qimg.scaled(500, 350, Qt.AspectRatioMode.KeepAspectRatio))
         cap.release()
-
 
     def run_dummy_mode(self):
         import numpy as np
@@ -186,26 +217,26 @@ class CameraThread(QThread):
         except Exception as e: 
             print(f"DB Error (increase_quantity): {e}")
 
-    def find_and_fill_empty_slot(self, aruco_id):
-        target_section = PART_MAPPING.get(aruco_id)
-        if not target_section: return None
-        found_slot = None
-        try:
-            with get_db_connection() as conn:
-                if not conn: return None
-                cursor = conn.cursor()
-                sql_sel = "SELECT slot_id FROM warehouse_slots WHERE section=%s AND is_occupied=0 ORDER BY slot_id ASC LIMIT 1"
-                cursor.execute(sql_sel, (target_section,))
-                res = cursor.fetchone()
-                if res:
-                    found_slot = res[0]
-                    sql_upd = "UPDATE warehouse_slots SET is_occupied=1, current_part_id=%s WHERE slot_id=%s"
-                    cursor.execute(sql_upd, (aruco_id, found_slot))
-                    conn.commit()
-                    print(f"✅ 슬롯 할당: {found_slot}")
-        except Exception as e: 
-            print(f"DB Error (find_and_fill_empty_slot): {e}")
-        return found_slot
+    # def find_and_fill_empty_slot(self, aruco_id):
+    #     target_section = PART_MAPPING.get(aruco_id)
+    #     if not target_section: return None
+    #     found_slot = None
+    #     try:
+    #         with get_db_connection() as conn:
+    #             if not conn: return None
+    #             cursor = conn.cursor()
+    #             sql_sel = "SELECT slot_id FROM warehouse_slots WHERE section=%s AND is_occupied=0 ORDER BY slot_id ASC LIMIT 1"
+    #             cursor.execute(sql_sel, (target_section,))
+    #             res = cursor.fetchone()
+    #             if res:
+    #                 found_slot = res[0]
+    #                 sql_upd = "UPDATE warehouse_slots SET is_occupied=1, current_part_id=%s WHERE slot_id=%s"
+    #                 cursor.execute(sql_upd, (aruco_id, found_slot))
+    #                 conn.commit()
+    #                 print(f"✅ 슬롯 할당: {found_slot}")
+    #     except Exception as e: 
+    #         print(f"DB Error (find_and_fill_empty_slot): {e}")
+    #     return found_slot
 
     def stop(self):
         self.running = False; self.wait()
@@ -1365,30 +1396,40 @@ class RobotControlSystem(QWidget):
                 self.db_table.setRowCount(0)
                 for i, (aid, name, tgt, cur_qty) in enumerate(rows):
                     self.db_table.insertRow(i)
-                    status = "✅ 완료" if cur_qty >= tgt and tgt > 0 else "⚠️ 진행중" if cur_qty > 0 else "대기"
+                    status = (
+                                "🟣 미등록 감지" if tgt == 0 and cur_qty > 0 else
+                                "✅ 완료" if cur_qty >= tgt and tgt > 0 else
+                                "⚠️ 진행중" if cur_qty > 0 else
+                                "대기"
+                            )
                     self.db_table.setItem(i,0,QTableWidgetItem(str(aid)))
                     self.db_table.setItem(i,1,QTableWidgetItem(str(name)))
                     self.db_table.setItem(i,2,QTableWidgetItem(str(tgt)))
                     self.db_table.setItem(i,3,QTableWidgetItem(str(cur_qty)))
                     self.db_table.setItem(i,4,QTableWidgetItem(status))
                     
-                    col = QColor(200,255,200) if cur_qty >= tgt and tgt > 0 else QColor(255,255,224) if cur_qty > 0 else QColor(255,255,255)
+                    col = (
+                        QColor(255, 180, 180) if tgt == 0 and cur_qty > 0 else
+                        QColor(200, 255, 200) if cur_qty >= tgt and tgt > 0 else
+                        QColor(255, 255, 224) if cur_qty > 0 else
+                        QColor(255, 255, 255)
+                    )
                     for c in range(5): 
                         self.db_table.item(i,c).setBackground(col)
 
                 # 2. warehouse_slots (창고 카드) 업데이트
-                query = """
-                    SELECT s.slot_id, s.is_occupied, s.current_part_id, p.part_name 
-                    FROM warehouse_slots s 
-                    LEFT JOIN parts p ON s.current_part_id = p.part_id
-                """
-                cur.execute(query)
-                slot_rows = cur.fetchall()
+                # query = """
+                #     SELECT s.slot_id, s.is_occupied, s.current_part_id, p.part_name 
+                #     FROM warehouse_slots s 
+                #     LEFT JOIN parts p ON s.current_part_id = p.part_id
+                # """
+                # cur.execute(query)
+                # slot_rows = cur.fetchall()
                 
-                for slot_id, occupied, part_id, part_name in slot_rows:
-                    if slot_id in self.warehouse_cards:
-                        display_name = part_name if part_name else (str(part_id) if part_id else "-")
-                        self.warehouse_cards[slot_id].update_info(display_name, occupied)
+                # for slot_id, occupied, part_id, part_name in slot_rows:
+                #     if slot_id in self.warehouse_cards:
+                #         display_name = part_name if part_name else (str(part_id) if part_id else "-")
+                #         self.warehouse_cards[slot_id].update_info(display_name, occupied)
         except Exception as e: 
             print(f"Update Error (load_verification_table): {e}")
             
