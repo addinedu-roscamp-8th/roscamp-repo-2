@@ -6,3 +6,9 @@ db_config = {
     'password': '1234',      
     'database': 'smart_factory'
 }
+
+cd backend
+python3 app.py
+
+web 검색창에 127.0.0.1:5000 입력
+
