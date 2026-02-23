@@ -114,6 +114,7 @@ class GuiNode(QThread):
         # ROS Interface Setup
         ############################################################################
         self.setup_mobile_interfaces(amcl_pose_qos)
+        self.setup_Storage_interfaces()
         self.setup_jetcobot_interfaces()
         self.setup_arm_interfaces()
         self.setup_manipulator_interfaces()
@@ -132,7 +133,8 @@ class GuiNode(QThread):
     ############################################################################
     # ROS Interface Setup
     ############################################################################
-    
+
+    # Mobile Robot interface
     # Mobile Robot Branch Point (Single, Multi)
     def setup_mobile_interfaces(self, amcl_pose_qos):
 
@@ -215,7 +217,12 @@ class GuiNode(QThread):
                 String, f"{robot_name}{T_SUFFIX_MOVE_ROLE}", 10
             )
     # Storage interface
-
+    def setup_Storage_interfaces(self):
+        self.inspector_publisher = self.node.create_publisher(
+            Bool,
+            '/inspection_done',
+            10
+        )
     # Arm interface
     # Jetcobot
     def setup_jetcobot_interfaces(self):
@@ -252,19 +259,24 @@ class GuiNode(QThread):
         self.node.create_subscription(Int32, T_ARM_UNLOAD_SIGNAL, self.unload_callback, 10)
         self.arm_pub = self.node.create_publisher(String, T_ARM_TARGET_SLOT, 10)
     
+    
     # Openmanipulator
     def setup_manipulator_interfaces(self):
         self.manip_start_pub = self.node.create_publisher(
             Bool, '/pick_and_place/start', 10
         )
+    
 
     ############################################################################
     # DB System
     # DB 조회 / 업데이트
     ############################################################################
 
-    # 가능하다면 DB 접근 로직은 별도 모듈로 분리해 주세요.
-    # 다만, 구현에 많은 시간이 소요될 경우에는 우선순위에서 제외해도 됩니다.
+    def publish_done_signal(self):
+        if self.inspector_publisher:
+            msg = Bool()
+            msg.data = True
+            self.inspector_publisher.publish(msg) # 📩 jetcobot Storage 시작 토글버튼
 
     ############################################################################
     # Jetcobot Storage System
@@ -518,11 +530,3 @@ class GuiNode(QThread):
 
     def unload_callback(self, msg):
         self.unload_signal.emit(msg.data)
-
-    ############################################################################
-    # GUI Integration Helpers
-    # GUI 버튼 → ROS 함수 호출 (ros_thread)
-    ############################################################################
-
-    def trigger_manip_start(self):
-        self.ros_thread.send_manip_start()

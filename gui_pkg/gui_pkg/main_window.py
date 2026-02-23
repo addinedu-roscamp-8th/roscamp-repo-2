@@ -140,7 +140,8 @@ class CameraThread(QThread):
         parameters = aruco.DetectorParameters()
         detector = cv2.aruco.ArucoDetector(aruco_dict, parameters)
         
-        url = "http://192.168.0.105:5000/video_feed" # 학원
+        url = "http://192.168.0.105:5000/video_feed" # 집
+        url = "http://192.168.0.6:5000/video_feed" # 학원
         cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG) 
 
         if not cap.isOpened():
@@ -361,6 +362,9 @@ class RobotControlSystem(QWidget):
             "모듈2": "MODULE_B",
             "모듈3": "MODULE_C"
         }
+
+        # 검수대 토글
+        self.inspection_sent = False
 
         self.initUI()
         self.ros_thread.robot_update_signal.connect(self.update_ros_data)
@@ -1397,7 +1401,7 @@ class RobotControlSystem(QWidget):
                 for i, (aid, name, tgt, cur_qty) in enumerate(rows):
                     self.db_table.insertRow(i)
                     status = (
-                                "🟣 미등록 감지" if tgt == 0 and cur_qty > 0 else
+                                "🟣 미등록" if tgt == 0 and cur_qty > 0 else
                                 "✅ 완료" if cur_qty >= tgt and tgt > 0 else
                                 "⚠️ 진행중" if cur_qty > 0 else
                                 "대기"
@@ -1416,7 +1420,19 @@ class RobotControlSystem(QWidget):
                     )
                     for c in range(5): 
                         self.db_table.item(i,c).setBackground(col)
+                
+                all_done_or_unregistered = all(
+                    (tgt == 0 and cur_qty > 0) or (cur_qty >= tgt and tgt > 0)
+                    for _, _, tgt, cur_qty in rows
+                )
 
+                if all_done_or_unregistered and len(rows) > 0:
+                    if not self.inspection_sent:
+                        self.ros_thread.publish_done_signal()
+                        self.inspection_sent = True
+                else:
+                    self.inspection_sent = False
+                    
                 # 2. warehouse_slots (창고 카드) 업데이트
                 # query = """
                 #     SELECT s.slot_id, s.is_occupied, s.current_part_id, p.part_name 
