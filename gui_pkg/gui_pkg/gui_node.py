@@ -53,7 +53,9 @@ T_JETCO1_SETMODE = "/jetcobot/storage/set_mode"  # [발행] 로봇 상태 설정
 T_JETCO1_MANUAL_REQ = "/jetcobot/storage/manual/request"   # [발행] 로봇 작업 요청
 T_JETCO1_MANUAL_RES = "/jetcobot/storage/manual/response"  # [수신] 로봇 작업 응답
 T_JETCO1_STR_BOOT = '/jetcobot/storage/boot'               # [발행] 부팅 명령
+T_JETCO1_INSPECTION = '/jetcobot/inspection_done' # [수신] 검수대 트리거 수신
 T_JETCO2_STACK_REQ = "/jetcobot/assembly/stack/request"    # [발행] 로봇 작업 요청
+
 
 # 4. DB 설정
 DB_HOST = 'localhost'
@@ -220,7 +222,7 @@ class GuiNode(QThread):
     def setup_Storage_interfaces(self):
         self.inspector_publisher = self.node.create_publisher(
             Bool,
-            '/inspection_done',
+            f"{T_JETCO1_INSPECTION}",
             10
         )
     # Arm interface

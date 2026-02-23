@@ -140,7 +140,7 @@ class CameraThread(QThread):
         parameters = aruco.DetectorParameters()
         detector = cv2.aruco.ArucoDetector(aruco_dict, parameters)
         
-        url = "http://192.168.0.105:5000/video_feed" # 집
+        # url = "http://192.168.0.105:5000/video_feed" # 집
         url = "http://192.168.0.6:5000/video_feed" # 학원
         cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG) 
 

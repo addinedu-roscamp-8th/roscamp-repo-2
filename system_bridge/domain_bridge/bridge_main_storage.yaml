@@ -19,3 +19,6 @@ topics:
 
   /jetcobot/storage/set_mode:
     type: std_msgs/msg/Int32
+
+  /jetcobot/inspection_done:
+    type: std_msgs/msg/Bool
