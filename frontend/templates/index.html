@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>스마트 팩토리 주문 시스템</title>
+    <style>
+        body { font-family: 'Malgun Gothic', sans-serif; background-color: #f4f7f6; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .container { background: white; padding: 40px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 400px; text-align: center; }
+        h2 { color: #333; margin-bottom: 20px; }
+        input { width: 90%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; }
+        button { width: 96%; padding: 12px; background-color: #007bff; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer; margin-top: 15px; }
+        button:hover { background-color: #0056b3; }
+        .file-box { border: 2px dashed #ccc; padding: 20px; margin-top: 10px; border-radius: 5px; color: #666; }
+        .link-list { margin-top: 20px; display: block; color: #666; text-decoration: none; font-size: 14px; }
+        .link-list:hover { text-decoration: underline; color: #007bff; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>BOM 변환 시스템</h2>
+        <form action="/upload_excel" method="post" enctype="multipart/form-data">
+            <input type="text" name="username" placeholder="사원 ID(ex: sk_hynix_01)" required>
+            <input type="text" name="project" placeholder="프로젝트명(ex: 용인 반도체 클러스터 SK hynix Phase 1 FAB Project)" required>
+            
+            <div class="file-box">
+                <p style="margin:0 0 10px 0; font-size:12px;">엑셀(.xlsx) 또는 PDF(.pdf) 파일을 업로드하세요</p>
+                
+                <input type="file" name="excel_file" accept=".xlsx, .xls, .pdf" required>
+            </div>
+            
+            <button type="submit">변환</button>
+        </form>
+
+        <a href="/list" class="link-list">지난 변환 내역 확인하기 ></a>
+    </div>
+</body>
+</html>
