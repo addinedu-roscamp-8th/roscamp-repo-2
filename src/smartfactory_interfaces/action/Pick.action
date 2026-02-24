@@ -1,0 +1,9 @@
+# Goal
+float64[6] pick_coords
+bool safe
+---
+bool success
+string message
+---
+float32 progress
+string state

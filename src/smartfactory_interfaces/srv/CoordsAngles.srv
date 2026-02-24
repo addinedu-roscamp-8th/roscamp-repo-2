@@ -1,0 +1,4 @@
+int32 type # angles: 0, coords: 1
+---
+float64[6] coords_angles
+string msg
