@@ -21,6 +21,8 @@ print("로봇이 연결되었습니다.")
 
 print("homepose로 이동합니다.")
 homepose = [0, 90, -90, -50, 0, 45]
+# homepose = [0, 0, -90, -50, 0, 45]
+
 # homepose = [0, 80, -115, -30, 0, 45]
 mc.send_angles(homepose, speed=50)
 

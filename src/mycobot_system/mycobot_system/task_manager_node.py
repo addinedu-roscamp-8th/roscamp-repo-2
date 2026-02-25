@@ -77,7 +77,9 @@ class TaskManagerNode(Node):
 
         # Place/stack strategy
         # self.assembly_pose = [60, 180, 180, -180, 0, -45]
-        self.assembly_pose = [60, 180, 115, -180, 0, -45]
+        # self.assembly_pose = [60, 180, 115, -180, 0, -45]
+        self.assembly_pose = [20, 180, 115, -180, 0, -45]
+
         self.stack_dz_mm = 27.0
         self.stack_dz_sign = -1.0
 
