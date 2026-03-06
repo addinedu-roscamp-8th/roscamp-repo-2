@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>부품 견적서 (표준)</title>
+    <style>
+        body { font-family: 'Malgun Gothic', sans-serif; background-color: #555; padding: 30px; margin: 0; }
+        .sheet { 
+            background: white; 
+            width: 210mm; 
+            min-height: 297mm; 
+            margin: 0 auto; 
+            padding: 20mm; 
+            box-shadow: 0 0 15px rgba(0,0,0,0.5); 
+            box-sizing: border-box;
+        }
+        
+        h1 { text-align: center; border-bottom: 3px solid #333; padding-bottom: 15px; margin-bottom: 30px; letter-spacing: 2px; }
+        .meta-box { display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 14px; border-bottom: 1px solid #ddd; padding-bottom: 10px; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #333; padding: 12px; text-align: center; font-size: 14px; }
+        th { background-color: #eee; font-weight: bold; height: 40px; border-bottom: 2px solid #000; }
+        
+        .aruco-col { 
+            font-family: 'Courier New', monospace; 
+            font-weight: 900; 
+            font-size: 1.4em;
+            color: #d63384;
+            background-color: #fff0f6;
+        }
+        .name-col { text-align: left; padding-left: 15px; font-weight: bold; }
+
+        .btn-area { text-align: center; margin-top: 40px; }
+        .btn { padding: 10px 20px; color: white; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; font-size: 15px; margin: 0 5px; }
+        .btn-print { background-color: #28a745; }
+        .btn-excel { background-color: #17a2b8; }
+        .btn-home { background-color: #6c757d; }
+
+        @media print {
+            body { background: none; padding: 0; }
+            .sheet { box-shadow: none; margin: 0; width: 100%; }
+            .no-print { display: none; }
+            .aruco-col { color: black; background: none; border: 2px solid black; }
+        }
+    </style>
+</head>
+<body>
+    <div class="sheet">
+        <h1>견적 요청서</h1>
+        
+        <div class="meta-box">
+            <div><strong>프로젝트:</strong> {{ project }}</div>
+            <div><strong>발행번호:</strong> {{ quote_id }}</div>
+            <div><strong>일자:</strong> {{ date }}</div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th width="15%">ArUco ID</th>
+                    <th width="45%">부품명 (Description)</th>
+                    <th width="20%">규격 (Size)</th>
+                    <th width="20%">수량 (Q'ty)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr>
+                    <td class="aruco-col">{{ row.id }}</td>
+                    
+                    <td class="name-col">{{ row.name }}</td>
+                    <td>{{ row.size }}</td>
+                    <td>{{ row.qty }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+
+        <div class="btn-area no-print">
+            <button onclick="window.print()" class="btn btn-print">PDF 저장 / 인쇄</button>
+            <a href="/download_excel/{{ quote_id }}" class="btn btn-excel">엑셀로 다운로드</a>
+            <a href="/list" class="btn btn-home">목록으로</a>
+        </div>
+    </div>
+</body>
+</html>

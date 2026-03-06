@@ -1,0 +1,17 @@
+## ExecuteTask.action
+
+# ===== Goal =====
+int32[] marker_ids          # 처리할 마커 ID 리스트
+bool reset_stack            # true면 stack level 0부터 시작
+
+---
+# ===== Result =====
+bool success
+string message
+
+---
+# ===== Feedback =====
+string state                # FSM 상태 (IDLE / OBSERVING / PICKING / PLACING ...)
+int32 current_index         # 현재 처리 중인 marker index
+int32 total                 # 전체 marker 개수
+float64 progress

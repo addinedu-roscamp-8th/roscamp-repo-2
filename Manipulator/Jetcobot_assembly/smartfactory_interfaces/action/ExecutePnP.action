@@ -1,0 +1,13 @@
+## ExecutePnP.action
+
+# Goal
+float64[] pick_coords    # 반드시 64여야 함
+float64[] place_coords   # 반드시 64여야 함
+---
+# Result
+bool success
+string message
+---
+# Feedback
+string current_stage
+float64 progress         # 수정

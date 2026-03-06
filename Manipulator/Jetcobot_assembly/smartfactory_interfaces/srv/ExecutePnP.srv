@@ -1,0 +1,8 @@
+# ExecutePnP.srv
+# manipulator_node high-level action interface
+
+float64[] pick_coords    # [x,y,z,rx,ry,rz] (base frame, mm/deg)
+float64[] place_coords   # [x,y,z,rx,ry,rz] (base frame, mm/deg)
+---
+bool success
+string message

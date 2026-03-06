@@ -1,0 +1,2 @@
+---
+float64[] coords   # [x,y,z,rx,ry,rz]  (mm / deg)

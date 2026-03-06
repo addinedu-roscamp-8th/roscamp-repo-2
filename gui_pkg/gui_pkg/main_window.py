@@ -140,8 +140,8 @@ class CameraThread(QThread):
         parameters = aruco.DetectorParameters()
         detector = cv2.aruco.ArucoDetector(aruco_dict, parameters)
         
-        # url = "http://192.168.0.105:5000/video_feed" # 집
-        url = "http://192.168.0.6:5000/video_feed" # 학원
+        url = "http://192.168.0.105:5000/video_feed" # 집
+        # url = "http://192.168.0.6:5000/video_feed" # 학원
         cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG) 
 
         if not cap.isOpened():
@@ -270,7 +270,8 @@ class SimpleMapWidget(QWidget):
             sy = int((ry / REAL_MAP_HEIGHT_CM) * h)
             sx = max(0, min(sx, w)); sy = max(0, min(sy, h))
             color = QColor(255, 100, 100) if "Pinky" in name else QColor(100, 100, 255)
-            painter.setBrush(QBrush(color)); painter.drawEllipse(QPoint(sx, sy), 6, 6)
+            sizex, sizey = 25, 25#지니0224
+            painter.setBrush(QBrush(color)); painter.drawRect(sx - sizex // 2, sy - sizey // 2, sizex, sizey) #지니0224
             painter.drawText(sx + 8, sy + 4, name)
 
 # ==========================================
@@ -348,8 +349,8 @@ class RobotControlSystem(QWidget):
         self.warehouse_cards = {} 
         self.ros_thread = ros_thread
         self.robot_name_map = {
-            "pinky1": "pinky_c0bd",
-            "pinky2": "pinky_b44f",
+            "pinky1": "pinky_b44f",
+            "pinky2": "pinky_c0bd",
             "pinky3": "pinky_1542",
             "jetcobot1": "storage_jetcobot",
             "jetcobot2": "assembly_jetcobot",
@@ -635,7 +636,7 @@ class RobotControlSystem(QWidget):
 
         btn_standby = style_nav_btn(QPushButton("대기장소"))
         btn_standby.clicked.connect(lambda _, b=btn_standby: self.apply_click_feedback(b))
-        btn_standby.clicked.connect(lambda _, b=btn_standby: self.send_nav_cmd("INSPECTION_ZONE", b))
+        btn_standby.clicked.connect(lambda _, b=btn_standby: self.send_nav_cmd("WAITING_ZONE", b))
         
         btn_inspect = style_nav_btn(QPushButton("검수대"))
         btn_inspect.clicked.connect(lambda _, b=btn_inspect: self.apply_click_feedback(b))
@@ -1037,6 +1038,7 @@ class RobotControlSystem(QWidget):
     def send_nav_cmd(self, location, button_obj=None): #지니 
         if self.current_viewing_robot:
             role_map = {
+                "WAITING_ZONE": "0",
                 "INSPECTION_ZONE": "1",
                 "PARTS_WAREHOUSE": "4",
                 "ASSEMBLY_ZONE": "3",
@@ -1052,6 +1054,7 @@ class RobotControlSystem(QWidget):
             # 2. 상태 메시지 업데이트
             target_name = ""
             if location == "INSPECTION_ZONE": target_name = "검수대 이동중"
+            elif location == "WAITING_ZONE": target_name = "대기장소 이동중"
             elif location == "PARTS_WAREHOUSE": target_name = "모듈 창고 이동중"
             elif location == "ASSEMBLY_ZONE": target_name = "조립대 이동중"
             self.lbl_state.setText(target_name)
@@ -1059,7 +1062,7 @@ class RobotControlSystem(QWidget):
                 
         else:
             QMessageBox.warning(self, "오류", "로봇을 먼저 선택해주세요.")
-          
+
     def role_id_to_text(self, role_id): #지니
         role_map = {
             "0": "대기",

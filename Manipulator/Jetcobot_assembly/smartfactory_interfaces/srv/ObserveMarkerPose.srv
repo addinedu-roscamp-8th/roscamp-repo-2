@@ -1,0 +1,8 @@
+int32 marker_id
+int32 n_samples
+float32 timeout_sec
+float32 outlier_thresh
+---
+bool ok
+float64[] rvec
+float64[] tvec

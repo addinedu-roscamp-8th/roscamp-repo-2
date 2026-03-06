@@ -1,0 +1,14 @@
+## ObserveMarker.action
+
+# Goal
+int32 marker_id
+int32 n_samples
+float64 timeout_sec      # 수정
+float64 outlier_thresh   # 수정
+---
+# Result
+bool ok
+float64[] base_target_coords
+---
+# Feedback
+string stage

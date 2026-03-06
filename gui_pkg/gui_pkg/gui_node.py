@@ -368,7 +368,7 @@ class GuiNode(QThread):
         x_m = msg.pose.pose.position.x
         y_m = msg.pose.pose.position.y
         x_cm = int(x_m * 100.0 + MAP_OFFSET_X_CM)
-        y_cm = int(y_m * 100.0 + MAP_OFFSET_Y_CM)
+        y_cm = int(-y_m * 100.0 + MAP_OFFSET_Y_CM)
         data = {"id": clean_id, "location": f"{x_cm},{y_cm}"}
         self.robot_update_signal.emit(data)
 
@@ -453,8 +453,8 @@ class GuiNode(QThread):
             return assignments
 
         robot_keys = sorted(self.move_role_pubs.keys())
-        available_roles = ["1", "3", "4"]
-        random.shuffle(available_roles)
+        available_roles = ["4", "3", "1"]
+        # random.shuffle(available_roles)
 
         for robot_key, role_id in zip(robot_keys, available_roles):
             robot_id = robot_key.lstrip("/")

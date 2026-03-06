@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>주문 저장 완료</title>
+    <style>
+        body { font-family: 'Malgun Gothic', sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #f0f2f5; margin: 0; }
+        .box { background: white; padding: 50px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: center; width: 400px; }
+        .icon { font-size: 60px; color: #28a745; margin-bottom: 20px; }
+        h2 { color: #333; margin-bottom: 10px; }
+        p { color: #666; margin-bottom: 30px; }
+        .btn { display: block; width: 100%; padding: 15px 0; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 18px; margin-top: 10px; }
+        .btn:hover { background-color: #0056b3; }
+        .btn-list { background-color: #17a2b8; } /* 청록색 */
+        .btn-list:hover { background-color: #138496; }
+        .btn-home { background-color: #6c757d; font-size: 14px; padding: 10px 0; }
+        .btn-home:hover { background-color: #5a6268; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <h2>BOM이 정상적으로 저장되었습니다.</h2>
+        <p>
+            <strong>프로젝트:</strong> {{ project }}<br>
+            <strong>저장된 항목:</strong> 총 {{ count }}건
+        </p>
+        
+        <a href="/view_order/{{ quote_id }}" class="btn">방금 올린 BOM 확인</a>
+        
+        <a href="/list" class="btn btn-list">전체 목록 보기</a>
+        
+        <a href="/" class="btn btn-home">홈으로 돌아가기</a>
+    </div>
+</body>
+</html>
