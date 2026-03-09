@@ -7,7 +7,8 @@
 본 프로젝트는 ROS2 기반 스마트팩토리 자동화 시스템으로 Control PC, Manipulator, Mobile Robot이 domain bridge를 통해 협업하도록 구성되어 있습니다.
 
 > # 📊 **프로젝트 전체 요약 및 기술 설명은 아래 PPT를 참고해주세요.**
->
+> <img width="972" height="546" alt="스크린샷 2026-03-10 084920" src="https://github.com/user-attachments/assets/9903538f-5962-4583-98df-b67dcea10280" />
+
 > 🔗 https://docs.google.com/presentation/d/168jklXeM5bWbdeiVo7vnc3Sdlypl-KNElhoRHj36eDc/edit?usp=drive_link
 
 ## Project Domain ID
@@ -55,6 +56,7 @@
 
 ## system_manager
 * 로봇과 Control PC 간 토픽 기반 통신을 관리하고 작업 순서를 제어하는 시스템 관리 pkg
+
 
 
 
