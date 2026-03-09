@@ -4,10 +4,7 @@
 
 ![심화8기_Resonance_판넬제작](https://github.com/user-attachments/assets/ca8c4f5c-629c-4041-b700-3be0254d1ee4)
 
-본 프로젝트는 ROS2 기반 스마트팩토리 자동화 시스템으로  
-Control PC, Manipulator, Mobile Robot(Pinky)이 domain bridge를 통해  
-협업하도록 구성되어 있습니다.
-
+본 프로젝트는 ROS2 기반 스마트팩토리 자동화 시스템으로 Control PC, Manipulator, Mobile Robot이 domain bridge를 통해 협업하도록 구성되어 있습니다.
 
 > # 📊 **프로젝트 전체 요약 및 기술 설명은 아래 PPT를 참고해주세요.**
 >
@@ -58,5 +55,6 @@ Control PC, Manipulator, Mobile Robot(Pinky)이 domain bridge를 통해
 
 ## system_manager
 * 로봇과 Control PC 간 토픽 기반 통신을 관리하고 작업 순서를 제어하는 시스템 관리 pkg
+
 
 
