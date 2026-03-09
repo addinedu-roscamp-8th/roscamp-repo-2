@@ -9,7 +9,7 @@ Control PC, Manipulator, Mobile Robot(Pinky)이 domain bridge를 통해
 협업하도록 구성되어 있습니다.
 
 
-> # 📊 **프로젝트 전체 설명은 아래 PPT에서 확인할 수 있습니다.**
+> # 📊 **프로젝트 전체 요약 및 기술 설명은 아래 PPT를 참고해주세요.**
 >
 > 🔗 https://docs.google.com/presentation/d/168jklXeM5bWbdeiVo7vnc3Sdlypl-KNElhoRHj36eDc/edit?usp=drive_link
 
@@ -58,4 +58,5 @@ Control PC, Manipulator, Mobile Robot(Pinky)이 domain bridge를 통해
 
 ## system_manager
 * 로봇과 Control PC 간 토픽 기반 통신을 관리하고 작업 순서를 제어하는 시스템 관리 pkg
+
 
