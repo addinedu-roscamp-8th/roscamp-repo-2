@@ -1,4 +1,19 @@
-# Project Domain ID
+# Smart Factory ROS2 Project
+
+## Project Overview
+
+![심화8기_Resonance_판넬제작](https://github.com/user-attachments/assets/ca8c4f5c-629c-4041-b700-3be0254d1ee4)
+
+본 프로젝트는 ROS2 기반 스마트팩토리 자동화 시스템으로  
+Control PC, Manipulator, Mobile Robot(Pinky)이 domain bridge를 통해  
+협업하도록 구성되어 있습니다.
+
+
+> # 📊 **프로젝트 전체 설명은 아래 PPT에서 확인할 수 있습니다.**
+>
+> 🔗 https://docs.google.com/presentation/d/168jklXeM5bWbdeiVo7vnc3Sdlypl-KNElhoRHj36eDc/edit?usp=drive_link
+
+## Project Domain ID
 
 | Name            | ID  |
 |-----------------|-----|
@@ -10,42 +25,35 @@
 | pinkt2 (pinky_c0bd) | 35  |
 | pinkt3 (pinky_1542) | 36  |
 
-
-# gui - openmanipulator 단순연동 완료
-
 ## build 
 * 빌드는 src directory 위치에서 colcon build 하시면 됩니다.
 
 ## cmd list
 ```
-1. ros2 launch system_bridge smartfactory_bridge.launch.py # domain_bridge launch file
-2. ros2 run gui_pkg main # gui run
-3. ros2 launch gui_pkg gui.launch.py # gui launch
-4. ros2 launch gui_pkg smartfactory_system.launch.py # gui & domain_bridge launch file
+1. ros2 launch gui_pkg smartfactory_system.launch.py # gui & domain_bridge launch file, 전체 실행 런치파일 
+2. ros2 launch gui_pkg gui.launch.py # gui launch
+3. ros2 launch system_bridge smartfactory_bridge.launch.py # domain_bridge launch file
 ```
 
-## gui_pkg 설명
+Package description
+## Manipulator
+* JetCobot과 OpenManipulator를 제어하는 매니퓰레이터 패키지 (RSBP에서 실행)
+
+## MobileRobot
+* Pinky 모바일 로봇을 위한 패키지 (RSBP에서 실행)
+
+## bom_web
+* BOM을 변환하는 웹 애플리케이션
+
+## gui_pkg
 1. main_window.py - 버튼, 레이블, UI 이벤트 처리 담당, 버튼 동작 코드 여기
 2. gui_node.py - ROS2 통신 전담 노드 (rclpy Node) - ROS 통신은 전부 여기
 
-# system_bridge
-* smartfactory_bridge.yaml - domain id 연동 , 토픽 정의는 여기
-* 이제 yaml 파일 추가하고 바로 빌드하시면 launch파일에 자동으로 등록됩니다.  
-(CMakeLists.txt 에 파일명 명시하지 않아도 됩니다.)
+## smartfactory_interfaces
+* PJT 전체 interface 모음
 
-## Domain Bridge YAML Naming Rules
-```
-상단에 정해진 domain ID로 yaml파일 작성해 주시기 바랍니다.
+## system_bridge
+* domain bridge pkg
 
-1. 파일명 : bridge_<from_robot>_to_<to_robot>.yaml
-2. 파일내 최상단 주석 : # bridge_for_<from_robot>
-3. name 필드 : name: <from_robot>_to_<to_robot>
-4. Domain ID : from_domain: <from_robot_domain_id>  
-               to_domain: <to_robot_domain_id>
-```
-
-
-# smartfactory_interfaces
-1. msg directory - msg 정의, ** 파일이름, 반드시 대문자로 시작, CamelCase 사용
-
-2. CMakeLists.txt - set에 파일 위치 기입 후 colcon build --packages-select smartfactory_interfaces 로 interface pkg 먼저 빌드 후 사용
+## system_manager
+* 로봇과 Control PC 간 토픽 기반 통신을 관리하고 작업 순서를 제어하는 시스템 관리 pkg
