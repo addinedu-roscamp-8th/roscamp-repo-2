@@ -35,7 +35,8 @@ Control PC, Manipulator, Mobile Robot(Pinky)이 domain bridge를 통해
 3. ros2 launch system_bridge smartfactory_bridge.launch.py # domain_bridge launch file
 ```
 
-Package description
+# Package description
+
 ## Manipulator
 * JetCobot과 OpenManipulator를 제어하는 매니퓰레이터 패키지 (RSBP에서 실행)
 
@@ -57,3 +58,4 @@ Package description
 
 ## system_manager
 * 로봇과 Control PC 간 토픽 기반 통신을 관리하고 작업 순서를 제어하는 시스템 관리 pkg
+
