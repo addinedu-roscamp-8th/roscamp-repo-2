@@ -1,5 +1,12 @@
 # Smart Factory ROS2 Project
 
+## 🎥 Demo Video
+[![Pick & Place Demo](https://img.youtube.com/vi/RbTi8bsz5DQ/maxresdefault.jpg)](https://youtu.be/RbTi8bsz5DQ?si=6ymwndZ8VQvB9C4A)
+
+> Click the image to watch the full demo on YouTube.
+[https://youtu.be/JyPYKrjtD1M](https://youtu.be/RbTi8bsz5DQ?si=6ymwndZ8VQvB9C4A)
+> 
+
 ## Project Overview
 
 ![심화8기_Resonance_판넬제작](https://github.com/user-attachments/assets/5266e106-a396-4f37-827a-bdc054ff8e86)
